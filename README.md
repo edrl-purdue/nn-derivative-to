@@ -7,7 +7,6 @@ This is a Python code repository for the 2023 journal paper: "Evaluation of Neur
 
 The repository includes the following files:
 \
-\
 NN_derivatives_examples.py: This script provides a general implementation of the four neural network-based derivative methods (i.e., analytical derivative, central finite difference method, complex step method, and automatic differentiation) for several multivariate regression examples.
 \
 \
