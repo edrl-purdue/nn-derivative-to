@@ -7,7 +7,11 @@ This is a Python code repository for the 2023 journal paper: "Evaluation of Neur
 
 The repository includes the following files:
 NN_derivatives_examples.py: This script provides a general implementation of the four neural network-based derivative methods (i.e., analytical derivative, central finite difference method, complex step method, and automatic differentiation) for several multivariate regression examples.
+\
+\
 Train_DBTO_NN.py: This script trains the neural network material model for DBTO.
+\
+\
 Train_HBTO_NN.py: This script trains the neural network material model for HBTO.
 Run_DBTO_NN.py: This script executes DBTO on the MBB beam example using the neural network material model.
 Run_DBTO_SIMP.py: This script executes DBTO on the MBB beam example using the SIMP material model.
