@@ -15,5 +15,4 @@ The repository includes the following files:
  * Appendix_B_example.py: This script trains the MLP and performs the analytical derivative calculations for the Appendix B example.
 
 \
-\
 More detailed instructions are coming soon...
