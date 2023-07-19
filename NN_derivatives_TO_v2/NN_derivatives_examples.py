@@ -1,12 +1,14 @@
-# NN Derivatives
-# by Joel C. Najmon
+# Neural network-based derivative methods
+# by Joel Najmon
 # Python 3.9
-# IMPORT PACKAGES
-import numpy as np  # version 1.24.3
+
+# %% IMPORT PACKAGES
+import numpy as np  # version 1.23.5
 from scipy import stats as stats  # version 1.10.1
-import matplotlib.pyplot as plt  # version 3.7.1
 import tensorflow as tf  # version 2.12.0
-from mpl_toolkits.mplot3d import Axes3D
+import matplotlib.pyplot as plt  # version 3.7.1
+import matplotlib  # version 3.7.1
+matplotlib.use('TkAgg')
 import time
 
 # %% DEFINE TEST FUNCTIONS
@@ -28,8 +30,8 @@ import time
 # %% Example Function 1
 ydim = 1  # y dimension
 xdim = 1  # x dimension
-x_lb = np.array([[-3]])
-x_ub = np.array([[3]])
+x_lb = np.array([[-1]])
+x_ub = np.array([[1]])
 
 
 def yx(x):
@@ -177,7 +179,7 @@ def dyx(x):
 #                         axis=1)))
 
 # %% GENERATE FEATURE SETS
-N = int(1e3)  # total number of feature sets for training (70%), testing (15%), and validation (15%)
+N = int(1e4)  # total number of feature sets for training (70%), testing (15%), and validation (15%)
 Nr = int(np.round(N * 0.85, decimals=0))  # number of training and validation feature sets
 LHS = stats.qmc.LatinHypercube(xdim)
 x_train = LHS.random(Nr) * (x_ub - x_lb) + x_lb  # LHS random generation of feature sets
@@ -203,7 +205,6 @@ loss = tf.keras.losses.MeanSquaredError()  # set loss function to mean squared e
 optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)  # set optimizer
 
 # Compile NN
-# kernel_reg = tf.keras.regularizers.l2(1e-2)  # define kernel regularizer
 kernel_reg = None  # define kernel regularizer
 for i in range(NL):
     nn_model.add(tf.keras.layers.Dense(NN, hidden_activation, kernel_regularizer=kernel_reg))  # create hidden layers
@@ -393,32 +394,74 @@ if ydim == 1:
             yn_tape = layer(yn_tape)
     dy_nn = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Np, ydim, xdim)
 
-    #  Plot Functions and Derivatives (WILL ADD SUBPLOTS AND TITLES LATER. MAYBE ALSO SUPPORT FOR MORE PLOT DIMENSIONS)
+    # Evaluate function and derivative at plotting points (via automatic differentiation)
     if xdim == 1:
         # Plot Function
-        fig = plt.figure()
-        plt.plot(x_plot, y_plot, 'g')
-        plt.plot(x_plot, y_nn, 'b')
-        plt.show()
+        fig = plt.figure(1)
+        plt.plot(x_plot, y_plot, 'g', label='Ground-truth')
+        plt.plot(x_plot, y_nn, 'b', label='NN prediction')
+        plt.xlabel('x')
+        plt.ylabel('y')
+        plt.title('Example Function')
+        plt.legend()
 
         # Plot Derivatives
-        fig = plt.figure()
-        plt.plot(x_plot, dy_plot.reshape(Np, 1), 'g')
-        plt.plot(x_plot, dy_nn.reshape(Np, 1), 'c')
-        plt.show()
+        fig = plt.figure(2)
+        plt.plot(x_plot, dy_plot.reshape(Np, 1), 'g', label='Ground-truth derivative')
+        plt.plot(x_plot, dy_nn.reshape(Np, 1), 'c', label='Neural network-based derivative')
+        plt.xlabel('x')
+        plt.ylabel('dy/dx')
+        plt.title('Derivative of Example function')
+        plt.legend()
     elif xdim == 2:
-        # Plot True Function
-        fig = plt.figure()
+        # Plot Function
+        fig = plt.figure(1)
         ax = fig.add_subplot(111, projection='3d')
         ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
                         x_plot[:, 1].reshape(step_num, step_num),
                         y_plot.reshape(step_num, step_num))
-        plt.show()
+        plt.title('Ground-truth of Example Function')
 
-        # Plot Predicted Function
-        fig = plt.figure()
+        # Plot Function
+        fig = plt.figure(2)
         ax = fig.add_subplot(111, projection='3d')
         ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
                         x_plot[:, 1].reshape(step_num, step_num),
                         y_nn.reshape(step_num, step_num))
-        plt.show()
+
+        plt.title('NN Prediction of Example Function')
+
+        # Plot Partial Derivative wrt x1
+        fig = plt.figure(3)
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
+                        x_plot[:, 1].reshape(step_num, step_num),
+                        dy_plot[:, :, 0].reshape(step_num, step_num))
+        plt.title('Ground-truth Partial Derivative of Example Function wrt x1')
+
+        # Plot Partial Derivative wrt x1
+        fig = plt.figure(4)
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
+                        x_plot[:, 1].reshape(step_num, step_num),
+                        dy_nn[:, :, 0].reshape(step_num, step_num))
+        plt.title('NN-based Partial Derivative of Example Function wrt x1')
+
+        # Plot Partial Derivative wrt x2
+        fig = plt.figure(5)
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
+                        x_plot[:, 1].reshape(step_num, step_num),
+                        dy_plot[:, :, 1].reshape(step_num, step_num))
+        plt.title('Ground-truth Partial Derivative of Example Function wrt x2')
+
+        # Plot Partial Derivative wrt x1
+        fig = plt.figure(6)
+        ax = fig.add_subplot(111, projection='3d')
+        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
+                        x_plot[:, 1].reshape(step_num, step_num),
+                        dy_nn[:, :, 1].reshape(step_num, step_num))
+        plt.title('NN-based Partial Derivative of Example Function wrt x2')
+
+# Show Figures
+plt.show()

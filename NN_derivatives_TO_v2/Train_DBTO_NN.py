@@ -1,29 +1,17 @@
-# by Joel C. Najmon
+# Train Neural Network Material Model for Density-based Topology Optimization
+# by Joel Najmon
 # Python 3.9
-# IMPORT PACKAGES
-import numpy as np  # version 1.24.3
-import scipy as sp
+
+# %% IMPORT PACKAGES
+import numpy as np  # version 1.23.5
+import scipy as sp  # version 1.10.1
 import tensorflow as tf  # version 2.12.0
 import matplotlib.pyplot as plt  # version 3.7.1
+import matplotlib  # version 3.7.1
+matplotlib.use('TkAgg')
 import time
 
-# %% DEFINE TEST FUNCTIONS
-# ydim is the NN's output dimension
-# xdim is the NN's input dimension
-# x_lb and x_ub are 2D ndarray (1, xdim) that contains the bounds for the corresponding input dimensions
-# X is an input ndarray of X with a shape of (# of input points, xdim)
-# yx is the test function. It returns an ndarray with a shape of (X.shape[0], ydim).
-#    - Note that for an input ndarray of x then yx = np.concatenate((y1(X), y2(X), ..., y_ydim(X)), axis=1)
-# dyx is the derivative of the test function. It returns an ndarray with a shape of (X.shape[0], ydim, xdim).
-#    - Note that for an input ndarray x then dyx = np.dstack(
-#                                         (np.concatenate((dy1(x)/dx1,   dy2(x)/dx2,   ..., dy_ydim(x)/dx1),   axis=1),
-#                                          np.concatenate((dy1(x)/dx2,   dy2(x)/dx2,   ..., dy_ydim(x)/dx2),   axis=1),
-#                                                               :             :                     :
-#                                          np.concatenate((dy1(x)/dxdim, dy2(x)/dxdim, ..., dy_ydim(X)/dxdim), axis=1)))
-# np.concatenate is only required if ydim > 1
-# np.dstack is only required if xdim > 1
-
-# %% SIMP Function
+# %% DEFINE SIMP FUNCTION
 ydim = 1  # y dimension
 xdim = 1  # x dimension
 x_lb = np.array([[0]])
@@ -50,7 +38,7 @@ x_test = LHS.random(Nt) * (x_ub - x_lb) + x_lb  # LHS random generation of featu
 y_test = yx(x_test)
 
 # %% TRAIN NN
-reps = int(1)  # number of NNs to train
+reps = int(1)  # number of NNs to train (for training more than 1 NN so that the best can be chosen from the lot)
 NL = int(1)  # number of hidden layers
 NN = int(64)  # number of neurons per hidden layer
 hidden_activation = 'sigmoid'  # activation function of hidden layer
@@ -72,7 +60,6 @@ for n in range(reps):
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)  # set optimizer
 
     # Compile NN
-    # kernel_reg = tf.keras.regularizers.l2(1e-2)  # define kernel regularizer
     kernel_reg = None  # define kernel regularizer
     for i in range(NL):
         nn_model.add(tf.keras.layers.Dense(NN, hidden_activation, kernel_regularizer=kernel_reg))  # create hidden layers
@@ -102,61 +89,52 @@ print('NEURAL NETWORK PERFORMANCE')
 print('MSE: ', mse[nnind])
 print('Time:', time.time() - t, 'seconds')
 
-nn_model.save('ANN_SIMP_' + '{:.0e}'.format(N))
+nn_model.save('NN_model_DBTO_' + '{:.0e}'.format(N) + 'new_model')  # save model with 'new_model' flag so that it does
+# not overwrite the original 'NN_model_DBTO_1e+04' models that were used in the paper.
 
 # %% PLOT FUNCTIONS AND DERIVATIVES
-if ydim == 1:
-    # Generate uniform distribution of plotting points over xdim space
-    Np = 100
-    step_num = int(np.ceil(Np ** (1 / xdim)))
-    Np = step_num ** xdim
-    if xdim == 1:
-        x_plot = np.transpose(np.mgrid[x_lb[0]:x_ub[0]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
-    elif xdim == 2:
-        x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
-                              x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
-    elif xdim == 3:
-        x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
-                              x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num),
-                              x_lb[:, 2]:x_ub[:, 2]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
+# Generate uniform distribution of plotting points over xdim space
+Np = 100
+step_num = int(np.ceil(Np ** (1 / xdim)))
+Np = step_num ** xdim
+if xdim == 1:
+    x_plot = np.transpose(np.mgrid[x_lb[0]:x_ub[0]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
+elif xdim == 2:
+    x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
+                          x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
+elif xdim == 3:
+    x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
+                          x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num),
+                          x_lb[:, 2]:x_ub[:, 2]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
 
-    #  Evaluate function and derivative at plotting points
-    y_plot = yx(x_plot)  # true function
-    dy_plot = dyx(x_plot)  # derivative of true function
-    y_nn = nn_model.predict(x_plot).reshape(Np, ydim)  # NN prediction of function
-    xn_tape = tf.Variable(x_plot, dtype=tf.float64)
-    with tf.GradientTape(persistent=True) as tape:  # NN prediction of the derivative of true function via AD
-        yn_tape = xn_tape
-        for layer in nn_model.layers:
-            yn_tape = layer(yn_tape)
-    dy_nn = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Np, ydim, xdim)
+# Evaluate function and derivative at plotting points (via automatic differentiation)
+y_plot = yx(x_plot)  # true function
+dy_plot = dyx(x_plot)  # derivative of true function
+y_nn = nn_model.predict(x_plot).reshape(Np, ydim)  # NN prediction of function
+xn_tape = tf.Variable(x_plot, dtype=tf.float64)
+with tf.GradientTape(persistent=True) as tape:  # NN prediction of the derivative of true function via AD
+    yn_tape = xn_tape
+    for layer in nn_model.layers:
+        yn_tape = layer(yn_tape)
+dy_nn = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Np, ydim, xdim)
 
-    #  Plot Functions and Derivatives (WILL ADD SUBPLOTS AND TITLES LATER. MAYBE ALSO SUPPORT FOR MORE PLOT DIMENSIONS)
-    if xdim == 1:
-        # Plot Function
-        fig = plt.figure()
-        plt.plot(x_plot, y_plot, 'g')
-        plt.plot(x_plot, y_nn, 'b')
-        plt.show()
+# Plot Function
+fig = plt.figure(1)
+plt.plot(x_plot, y_plot, 'g', label='Ground-truth')
+plt.plot(x_plot, y_nn, 'b', label='MLP prediction')
+plt.xlabel('theta_e')
+plt.ylabel('E(theta_e)')
+plt.title('SIMP function; Eq. (14)')
+plt.legend()
 
-        # Plot Derivatives
-        fig = plt.figure()
-        plt.plot(x_plot, dy_plot.reshape(Np, 1), 'g')
-        plt.plot(x_plot, dy_nn.reshape(Np, 1), 'c')
-        plt.show()
-    elif xdim == 2:
-        # Plot True Function
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
-                        x_plot[:, 1].reshape(step_num, step_num),
-                        y_plot.reshape(step_num, step_num))
-        plt.show()
+# Plot Derivatives
+fig = plt.figure(2)
+plt.plot(x_plot, dy_plot.reshape(Np, 1), 'g', label='Ground-truth derivative')
+plt.plot(x_plot, dy_nn.reshape(Np, 1), 'c', label='Neural network-based derivative')
+plt.xlabel('theta_e')
+plt.ylabel('dE(theta_e)/dtheta_e')
+plt.title('Derivative of SIMP function; Eq. (15)')
+plt.legend()
 
-        # Plot Predicted Function
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
-                        x_plot[:, 1].reshape(step_num, step_num),
-                        y_nn.reshape(step_num, step_num))
-        plt.show()
+# Show Figures
+plt.show()

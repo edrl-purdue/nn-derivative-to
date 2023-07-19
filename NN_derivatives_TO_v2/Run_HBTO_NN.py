@@ -1,10 +1,18 @@
-import numpy as np
+# Perform Homogenization-based Topology Optimization with a Neural network material model
+# by Joel Najmon and Andres Tovar
+# Python 3.9
+
+# %% IMPORT PACKAGES
+import numpy as np  # version 1.23.5
 import numpy.matlib as npm
-import scipy as sp
+import scipy as sp  # version 1.10.1
 from scipy.sparse import csc_matrix, coo_matrix
-from scipy.sparse.linalg import spsolve
+from scipy.sparse.linalg import spsolve, norm
+import tensorflow as tf  # version 2.12.0
+import matplotlib.pyplot as plt  # version 3.7.1
+import matplotlib  # version 3.7.1
+matplotlib.use('TkAgg')
 from math import ceil
-import tensorflow as tf
 
 
 # Element stiffness matrix for mechanical analysis
@@ -125,13 +133,13 @@ def filterprep(model):
     return H, Hs
 
 
-# Actual filter function
+# Filter function
 def filterfun(x, dc, dv, H, Hs, ft):
     nelx = x.shape[1]
     nely = x.shape[0]
     dcf = dc
     dvf = dv
-    if ft == 1:
+    if ft == 1:  # sensitivity filter
         xdc = x * dc
         xdc = xdc.reshape(-1, 1, order='F')
         tmat = npm.repmat(1e-3, nely, nelx)
@@ -139,7 +147,7 @@ def filterfun(x, dc, dv, H, Hs, ft):
         dcf = H * xdc / Hs / tmax
         dcf = dcf.reshape(nely, nelx, order='F')
         dvf = dv
-    elif ft == 2:
+    elif ft == 2:  # density filter
         xdc = dc.reshape(-1, 1, order='F')
         xdv = dv.reshape(-1, 1, order='F')
         dcf = H * (xdc / Hs)
@@ -149,7 +157,7 @@ def filterfun(x, dc, dv, H, Hs, ft):
     return dcf, dvf
 
 
-# Actual finite element analysis
+# Finite element analysis
 def feafun(xPhys, model):
     xPhys = xPhys.reshape(-1, 2, order='F')
 
@@ -160,14 +168,12 @@ def feafun(xPhys, model):
         xPhys[:, 1] = np.asarray(model.H * xPhys[:, 1].reshape(-1, 1, order='F') / model.Hs).flatten('F')
 
     # sK vector
-    # KEvec = KE.reshape(-1, 1, order='F')
-    # xPvec = xPhys.reshape(-1, 2, order='F').squeeze()
-    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])
-    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9
+    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])  # minimum stiffness tensor
+    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9  # maximum stiffness tensor
     x_test = xPhys
-    C_pred = model.nn_model.predict(x_test, verbose=0)
+    C_pred = model.nn_model.predict(x_test, verbose=0)  # predict stiffness tensor
 
-    # FE-ANALYSIS
+    # FEA
     sK_mat = np.zeros((64, xPhys.shape[0]))
     for xx in np.arange(0, xPhys.shape[0]):
         C = np.array([[C_pred[xx, 0], C_pred[xx, 1], 0], [C_pred[xx, 1], C_pred[xx, 2], 0], [0, 0, C_pred[xx, 3]]])
@@ -183,27 +189,25 @@ def feafun(xPhys, model):
     K = coo_matrix((sKshp, (iKint, jKint)))
     K = 0.5 * (K.transpose() + K)
 
-    # SOLVE FINITE ELEMENT EQUATION
-    U = np.zeros((dofs, 1))
+    # Solve finite element equation
+    U = np.zeros((model.dofs, 1))
     K = csc_matrix(K)
     F = csc_matrix(model.F)
     U[model.freedofs, :] = spsolve(K[model.freedofs, model.freedofs.reshape(-1, 1, order='F')],
                              F[model.freedofs, :]).reshape(-1, 1, order='F')
     U[model.fixeddofs, :] = 0
 
-    # OBJECTIVE FUNCTION
-    # Element compliance matrix
-    ceU = U[model.edofMat][:, :, 0]
+    # Objective function
+    ceU = U[model.edofMat][:, :, 0]  # Element compliance matrix
     ceUKU = np.zeros(xPhys.shape[0])
     for xx in np.arange(0, xPhys.shape[0]):
         KE = sK_mat[:, xx].reshape(8, 8, order='F')
         ceUKU[xx] = np.matmul(np.matmul(ceU[xx, :], KE), ceU[xx, :])
-    # ceUKU = (ceU @ KE) * ceU
-    # ceUKUsum = ceUKU.sum(axis=0)
-    # ce = ceUKU.reshape((nely, nelx), order='F')
 
     return sum(ceUKU)
 
+
+# Finite element analysis with sensitivity coefficients
 def dfeafun(xPhys, model):
     xPhys = xPhys.reshape(-1, 2, order='F')
 
@@ -214,15 +218,13 @@ def dfeafun(xPhys, model):
         xPhys[:, 1] = np.asarray(model.H * xPhys[:, 1].reshape(-1, 1, order='F') / model.Hs).flatten('F')
 
     # sK vector
-    # KEvec = KE.reshape(-1, 1, order='F')
-    # xPvec = xPhys.reshape(-1, 2, order='F').squeeze()
-    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])
-    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9
+    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])  # minimum stiffness tensor
+    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9  # maximum stiffness tensor
     x_test = xPhys
-    C_pred = model.nn_model.predict(x_test, verbose=0)
-    dC_pred = dcfun(x_test, model.nn_model)
+    C_pred = model.nn_model.predict(x_test, verbose=0)  # predict stiffness tensor
+    dC_pred = dcfun(x_test, model.nn_model)  # neural network-based sensitivity coefficients
 
-    # FE-ANALYSIS
+    # FEA
     sK_mat = np.zeros((64, xPhys.shape[0]))
     for xx in np.arange(0, xPhys.shape[0]):
         C = np.array([[C_pred[xx, 0], C_pred[xx, 1], 0], [C_pred[xx, 1], C_pred[xx, 2], 0], [0, 0, C_pred[xx, 3]]])
@@ -235,7 +237,6 @@ def dfeafun(xPhys, model):
     for dd in np.arange(0, 2):
         for xx in np.arange(0, xPhys.shape[0]):
             dC = np.array([[dC_pred[xx, 0, dd], dC_pred[xx, 1, dd], 0], [dC_pred[xx, 1, dd], dC_pred[xx, 2, dd], 0], [0, 0, dC_pred[xx, 3, dd]]])
-            # C = np.minimum(np.maximum(C, Cmin), Cmax)
             dKEvec = kefun_C(dC).reshape(-1, 1, order='F')
             sdK_mat[:, xx, dd] = dKEvec.squeeze()
 
@@ -246,7 +247,7 @@ def dfeafun(xPhys, model):
     K = coo_matrix((sKshp, (iKint, jKint)))
     K = 0.5 * (K.transpose() + K)
 
-    # SOLVE FINITE ELEMENT EQUATION
+    # Solve finite element equation
     U = np.zeros((model.dofs, 1))
     K = csc_matrix(K)
     F = csc_matrix(model.F)
@@ -254,30 +255,24 @@ def dfeafun(xPhys, model):
                              F[model.freedofs, :]).reshape(-1, 1, order='F')
     U[model.fixeddofs, :] = 0
 
-    # OBJECTIVE FUNCTION
-    # Element compliance matrix
-    ceU = U[model.edofMat][:, :, 0]
+    # Objective function
+    ceU = U[model.edofMat][:, :, 0]  # Element compliance matrix
     ceUKU = np.zeros(xPhys.shape[0])
     for xx in np.arange(0, xPhys.shape[0]):
         KE = sK_mat[:, xx].reshape(8, 8, order='F')
         ceUKU[xx] = np.matmul(np.matmul(ceU[xx, :], KE), ceU[xx, :])
-    # ceUKU = (ceU @ KE) * ceU
-    # ceUKUsum = ceUKU.sum(axis=0)
-    # ce = ceUKU.reshape((nely, nelx), order='F')
 
+    # Derivative of objective function
     ceUdKU = np.zeros((xPhys.shape[0], 2))
     for dd in np.arange(0, 2):
         for xx in np.arange(0, xPhys.shape[0]):
             dKE = sdK_mat[:, xx, dd].reshape(8, 8, order='F')
             ceUdKU[xx, dd] = np.matmul(np.matmul(ceU[xx, :], dKE), ceU[xx, :])
 
-    # print(' Obj.: ', '{:4.2f}'.format(sum(ceUKU)),
-    #       ' Vol.: ', '{:4.2f}'.format((model.nelx * model.nely - np.sum(np.multiply(xPhys[:, 0], xPhys[:, 1]))) / (model.nelx * model.nely)))
-    # print((ceUdKU > 0).max())
-
     dc = -1 * ceUdKU
     dv = np.ones(dc.shape)
 
+    # Apply filter
     dcf1, dvf1 = filterfun(xPhys[:, 0].reshape((model.nely, model.nelx), order='F'), dc[:, 0].reshape((model.nely, model.nelx), order='F'),
                          dv[:, 0].reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
     dcf2, dvf2 = filterfun(xPhys[:, 1].reshape((model.nely, model.nelx), order='F'), dc[:, 1].reshape((model.nely, model.nelx), order='F'),
@@ -288,6 +283,8 @@ def dfeafun(xPhys, model):
 
     return dcf.flatten('F')
 
+
+# Neural network-based sensitivity coefficients
 def dcfun(x_test, nn_model):
     Nt = x_test.shape[0]
     ydim = nn_model.output_shape[1]  # y dimension
@@ -409,11 +406,13 @@ def dcfun(x_test, nn_model):
     return dC_pred
 
 
+# Non-linear volume fraction constraint
 def nlcon(xPhys):
     xPhys = xPhys.reshape(-1, 2, order='F')
     return ((model.nelx * model.nely - np.sum(np.multiply(xPhys[:, 0], xPhys[:, 1]))) / (model.nelx * model.nely)) - model.volfrac
 
 
+# Derivative of non-linear volume fraction constraint
 def dnlcon(xPhys):
     xPhys = xPhys.reshape(-1, 2, order='F')
     dc = np.ones(xPhys.shape)
@@ -421,6 +420,7 @@ def dnlcon(xPhys):
     dv[:, 0] = -xPhys[:, 1] / (model.nelx * model.nely)
     dv[:, 1] = -xPhys[:, 0] / (model.nelx * model.nely)
 
+    # Apply filter
     dcf1, dvf1 = filterfun(xPhys[:, 0].reshape((model.nely, model.nelx), order='F'), dc[:, 0].reshape((model.nely, model.nelx), order='F'),
                            dv[:, 0].reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
     dcf2, dvf2 = filterfun(xPhys[:, 1].reshape((model.nely, model.nelx), order='F'), dc[:, 1].reshape((model.nely, model.nelx), order='F'),
@@ -432,7 +432,9 @@ def dnlcon(xPhys):
     return dvf.flatten('F')
 
 
+# Save select iteration information
 def save_step(x, it):
+    # Define which iterations get saved
     if it.niter == 1 or it.niter == 10 or it.niter == 100 or it.niter % 500 == 0:
         xopt1 = x[0:(model.nely * model.nelx)].reshape(model.nely, model.nelx, order='F')
         xopt2 = x[(model.nely * model.nelx):].reshape(model.nely, model.nelx, order='F')
@@ -441,14 +443,14 @@ def save_step(x, it):
         niter = it.niter
         dc = it.grad
 
-        filename = 'HBTO_ANN_dy_rr' + str(model.der_type) + '/HBTO_ANN_dy' + str(model.der_type) + '_it' + str(niter)
-        np.savez(filename, xopt1=xopt1, xopt2=xopt2, topt=topt, comp=comp, dc=dc, niter=niter)
+        filename = 'HBTO_NN_result_dy' + str(model.der_type) + '/HBTO_NN_dy' + str(model.der_type) + '_it' + str(niter)
+        np.savez(filename, xopt1=xopt1, xopt2=xopt2, topt=topt, comp=comp, dc=dc, niter=niter)  # save file
 
 
 # Main function
-def top88(model):
-    bds = sp.optimize.Bounds(lb=0, ub=1, keep_feasible=True)
-    con = sp.optimize.NonlinearConstraint(nlcon, lb=0.0, ub=0.0, jac=dnlcon, keep_feasible=True)
+def HBTO(model):
+    bds = sp.optimize.Bounds(lb=0, ub=1, keep_feasible=True)  # define theta bounds
+    con = sp.optimize.NonlinearConstraint(nlcon, lb=0.0, ub=0.0, jac=dnlcon, keep_feasible=True)  # define NL constraint
     res = sp.optimize.minimize(feafun,
                                model.x,
                                args=(model),
@@ -456,23 +458,29 @@ def top88(model):
                                jac=dfeafun,
                                bounds=bds,
                                constraints=con,
-                               tol=1e-3,
+                               tol=model.tolx,
                                options={'maxiter': model.maxiter, 'disp': True, 'verbose': 3},
                                callback=save_step)
-
-    # res = sp.optimize.minimize(feafun,
-    #                            model.x,
-    #                            args=(model),
-    #                            method='SLSQP',
-    #                            jac=dfeafun,
-    #                            bounds=bds,
-    #                            constraints={'type': 'eq', 'fun': nlcon, 'jac': dnlcon},
-    #                            tol=1e-3,
-    #                            options={'maxiter': model.maxiter, 'disp': True})
-
     return res
 
 
+# Create microstructure with rectangular hole
+def create_Micro(nel, theta1, theta2):
+    ye, xe = np.meshgrid(np.linspace(-1 + 1/nel, +1 - 1/nel, nel), np.linspace(-1 + 1/nel, +1 - 1/nel, nel))
+    ecoords_c_norm = np.concatenate((xe.reshape(-1, 1, order='F'), ye.reshape(-1, 1, order='F')), axis=1)
+    xMicro = np.zeros((nel*nel, 1))
+    for e in np.arange(0, nel*nel):
+        if ecoords_c_norm[e, 0] <= -1 + (1 - theta1):  # right
+            xMicro[e, 0] = 1
+        if ecoords_c_norm[e, 1] <= -1 + (1 - theta2):  # bottom
+            xMicro[e, 0] = 1
+        if ecoords_c_norm[e, 0] >= 1 - (1 - theta1):  # left
+            xMicro[e, 0] = 1
+        if ecoords_c_norm[e, 1] >= 1 - (1 - theta2):  # top
+            xMicro[e, 0] = 1
+    return xMicro.reshape(nel, nel, order='F')
+
+# Model class
 class model:
     def __init__(self):
         self.x = None  # Densities
@@ -482,7 +490,7 @@ class model:
         self.fixeddofs = None  # Supports
         self.freedofs = None  # Free dofs
         self.KE = None  # Element stiffness matrix
-        self.nn_model = None  # ANN model
+        self.nn_model = None  # NN model
         self.nelx = None  # Number of elements in x-direction
         self.nely = None  # Number of elements in y-direction
         self.H = None
@@ -494,29 +502,29 @@ class model:
         self.volfrac = None
         self.rmin = None
         self.maxiter = None
+        self.tolx = None
         self.E0 = None  # Void stiffness
         self.Emin = None  # Fluid stiffness
         self.nu = None  # Poissons ratio
 
 
-# EXAMPLE
-
-# DEFINE MODEL AND OPTIMIZATION SETTINGS
+# %% RUN HBTO MBB EXAMPLE
+# Define model and optimization settings
 model.nelx = 60  # number of elements in the x-direction
 model.nely = 30  # number of elements in the y-direction
 model.volfrac = 0.5  # volume fraction constraint
 model.rmin = 2.7  # filter radius
-model.ft = 1  # Filter option (1 or 2)
-model.maxiter = 5000  # Number of iterations
+model.ft = 1  # Filter option (1 = sensitivity filter or 2 = density filter)
+model.maxiter = 50  # Number of iterations
+model.tolx = 1e-3
 
-# INITIALIZE MODEL DETAILS
+# Initialize model details
 x0 = (np.ones((model.nely * model.nelx, 2)) * np.sqrt(1-model.volfrac)).flatten('F')  # initial design
-
 model.x = x0  # initial design
 model.edofMat, model.iK, model.jK = feaprep(model)  # prepare fea
 model.H, model.Hs = filterprep(model)  # prepare filter
-model.nn_model = tf.keras.models.load_model("ANN_HB_1e+04")  # load ann model
-model.der_type = 4  # type of derivative method to use
+model.nn_model = tf.keras.models.load_model("NN_model_HBTO_1e+04")  # load nn model
+model.der_type = 2  # type of derivative method to use (1 = Analytical Der., 2 = CFD, 3 = CSM, 4 = Automatic Diff.)
 
 # Force vector for the MBB problem
 dofs = 2 * (model.nelx + 1) * (model.nely + 1)
@@ -533,10 +541,11 @@ fxd2 = 2 * (model.nelx + 1) * (model.nely + 1) - 1
 model.fixeddofs = np.block([fxd1, fxd2])
 model.freedofs = np.setdiff1d(np.arange(0, dofs), model.fixeddofs)
 
-
+# Solve topology optimization problem
 dc0 = dfeafun(x0, model)  # compute initial sensitivity coefficients
-res = top88(model)  # solve TO problem
+res = HBTO(model)  # solve TO problem
 
+# Record and save output data
 xopt1 = res.x[0:(model.nely * model.nelx)].reshape(model.nely, model.nelx, order='F')
 xopt2 = res.x[(model.nely * model.nelx):].reshape(model.nely, model.nelx, order='F')
 topt = res.execution_time
@@ -544,5 +553,20 @@ comp = res.fun
 niter = res.niter
 dc = res.grad
 
-filename = 'HBTO_ANN_dy_rr' + str(model.der_type) + '/HBTO_ANN_dy' + str(model.der_type) + '_it' + str(niter) + 'final'
-np.savez(filename, xopt1=xopt1, xopt2=xopt2, topt=topt, comp=comp, dc0=dc0, dc=dc, niter=niter)
+filename = 'HBTO_NN_result_dy' + str(model.der_type) + '/HBTO_NN_dy' + str(model.der_type) + '_it' + str(niter) + 'final'
+np.savez(filename, xopt1=xopt1, xopt2=xopt2, topt=topt, comp=comp, dc0=dc0, dc=dc, niter=niter)  # save final design
+
+# Plot final topology
+nel = 100
+xfinal = np.zeros((model.nely*nel, model.nelx*nel))
+xopt1 = xopt1.reshape(-1, 1, order='F')
+xopt2 = xopt2.reshape(-1, 1, order='F')
+yv, xv = np.meshgrid(np.linspace(0, model.nelx*nel, model.nelx+1), np.linspace(0, model.nely*nel, model.nely+1))
+xv1 = xv[0:model.nely, 0:model.nelx].reshape(-1, 1, order='F')
+xv2 = xv[1:model.nely+1, 1:model.nelx+1].reshape(-1, 1, order='F')
+yv1 = yv[0:model.nely, 0:model.nelx].reshape(-1, 1, order='F')
+yv2 = yv[1:model.nely+1, 1:model.nelx+1].reshape(-1, 1, order='F')
+for e in np.arange(0, model.nelx*model.nely):
+    xfinal[int(xv1[e, 0]):int(xv2[e, 0]), int(yv1[e, 0]):int(yv2[e, 0])] = create_Micro(nel, xopt1[e, 0], xopt2[e, 0])
+plt.imshow(xfinal, extent=[0, model.nelx*nel, 0, model.nely*nel], cmap='Greys')
+plt.show()

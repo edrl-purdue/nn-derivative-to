@@ -1,11 +1,14 @@
-# NN Derivatives
-# by Joel C. Najmon
+# Appendix B: Example of Analytical Derivative Calculations through a Neural Network
+# by Joel Najmon
 # Python 3.9
-# IMPORT PACKAGES
-import numpy as np
-from scipy import stats as stats
-import matplotlib.pyplot as plt
-import tensorflow as tf
+
+# %% IMPORT PACKAGES
+import numpy as np  # version 1.23.5
+from scipy import stats as stats  # version 1.10.1
+import tensorflow as tf  # version 2.12.0
+import matplotlib.pyplot as plt  # version 3.7.1
+import matplotlib  # version 3.7.1
+matplotlib.use('TkAgg')
 import time
 
 # %% Appendix B Example Function
@@ -121,55 +124,12 @@ for s in np.arange(0, Nt):  # loop through test feature sets
     dy_1[s, :, :] = dy_product.T.reshape(1, ydim, xdim)  # derivative via Analytical Derivative of NN
 t_1 = time.time() - t  # prediction time
 
-# 2) Central Finite Difference Approximation
-t = time.time()
-h_cfd = 1e-6  # step size
-dy_2 = np.zeros((Nt, ydim, xdim))
-for d in np.arange(0, xdim):
-    h_mat = np.zeros((Nt, xdim))
-    h_mat[:, [d]] = np.ones((Nt, 1)) * h_cfd  # perturbation array
-    dy_2[:, :, d] = ((nn_model.predict(x_test + h_mat) - nn_model.predict(x_test - h_mat))
-                     / (2 * h_cfd)).reshape(Nt, ydim)  # derivative via CFDA
-t_2 = time.time() - t  # prediction time
-
-# 3) Complex Step Derivative Approximation
-t = time.time()
-h_csm = 1e-12  # step size
-dy_3 = np.zeros((Nt, ydim, xdim))
-for d in np.arange(0, xdim):  # loop through xdim for partial derivatives
-    h_mat = 0j * np.zeros((1, xdim), dtype='complex')
-    h_mat[0, d] = 1j * h_csm  # perturbation array
-
-    y_csm = np.zeros((Nt, ydim), dtype='complex')
-    for s in np.arange(0, Nt):  # loop through test feature sets
-        Y0 = (x_test[s, :] + h_mat).reshape(xdim, 1)  # perturbed input
-        Yn_csm = [act_fn(Y0.T, Wn[0], Bn[0], An[0])]  # initialize 1st layer output
-
-        for L in np.arange(1, NL + 1):  # manual NN prediction so imaginary numbers can be passed
-            Yn_csm.append(act_fn(Yn_csm[L - 1], Wn[L], Bn[L], An[L]))  # hidden layer L output
-        y_csm[s, :] = Yn_csm[-1]  # manual NN prediction
-    dy_3[:, :, d] = (np.imag(y_csm) / h_csm)  # derivative via CSDA
-t_3 = time.time() - t  # prediction time
-
-# 4) Automatic Differentiation
-t = time.time()
-xn_tape = tf.Variable(x_test, dtype=tf.float64)
-with tf.GradientTape(persistent=True) as tape:
-    yn_tape = xn_tape
-    for layer in nn_model.layers:  # loop through layers
-        yn_tape = layer(yn_tape)
-dy_4 = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Nt, ydim, xdim)  # derivative via AD
-t_4 = time.time() - t  # prediction time
-
 # %% ERROR CALCULATIONS
 # Mean Squared Error of NN
 mse = tf.metrics.mean_squared_error(y_true=y_0.squeeze(), y_pred=y_1.squeeze()).numpy()
 
 # Mean Squared Errors of the NN-derived Derivative Methods
 dy_1_er = np.float64(tf.metrics.mean_squared_error(y_true=dy_0.reshape(1, -1), y_pred=dy_1.reshape(1, -1)).numpy())
-dy_2_er = np.float64(tf.metrics.mean_squared_error(y_true=dy_0.reshape(1, -1), y_pred=dy_2.reshape(1, -1)).numpy())
-dy_3_er = np.float64(tf.metrics.mean_squared_error(y_true=dy_0.reshape(1, -1), y_pred=dy_3.reshape(1, -1)).numpy())
-dy_4_er = np.float64(tf.metrics.mean_squared_error(y_true=dy_0.reshape(1, -1), y_pred=dy_4.reshape(1, -1)).numpy())
 
 print(' ')
 print('NEURAL NETWORK PERFORMANCE')
@@ -180,72 +140,51 @@ print('NEURAL NETWORK-DERIVED DERIVATIVES\'')
 print('Analytical Derivative of NN:')
 print('Error:           ', dy_1_er)
 print('Prediction time: ', t_1)
-print(' ')
-print('Central Finite Difference Approximation:')
-print('Error:           ', dy_2_er)
-print('Prediction time: ', t_2)
-print(' ')
-print('Complex Step Derivative Approximation:')
-print('Error:           ', dy_3_er)
-print('Prediction time: ', t_3)
-print(' ')
-print('Automatic Differentiation:')
-print('Error:           ', dy_4_er)
-print('Prediction time: ', t_4)
 
 # %% PLOT FUNCTIONS AND DERIVATIVES
-if ydim == 1:
-    # Generate uniform distribution of plotting points over xdim space
-    Np = 100
-    step_num = int(np.ceil(Np ** (1 / xdim)))
-    Np = step_num ** xdim
-    if xdim == 1:
-        x_plot = np.transpose(np.mgrid[x_lb[0]:x_ub[0]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
-    elif xdim == 2:
-        x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
-                              x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
-    elif xdim == 3:
-        x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
-                              x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num),
-                              x_lb[:, 2]:x_ub[:, 2]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
+# Generate uniform distribution of plotting points over xdim space
+Np = 100
+step_num = int(np.ceil(Np ** (1 / xdim)))
+Np = step_num ** xdim
+if xdim == 1:
+    x_plot = np.transpose(np.mgrid[x_lb[0]:x_ub[0]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
+elif xdim == 2:
+    x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
+                          x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
+elif xdim == 3:
+    x_plot = np.transpose(np.mgrid[x_lb[:, 0]:x_ub[:, 0]:complex(0, step_num),
+                          x_lb[:, 1]:x_ub[:, 1]:complex(0, step_num),
+                          x_lb[:, 2]:x_ub[:, 2]:complex(0, step_num)].reshape(xdim, step_num ** xdim))
 
-    #  Evaluate function and derivative at plotting points
-    y_plot = yx(x_plot)  # true function
-    dy_plot = dyx(x_plot)  # derivative of true function
-    y_nn = nn_model.predict(x_plot).reshape(Np, ydim)  # NN prediction of function
-    xn_tape = tf.Variable(x_plot, dtype=tf.float64)
-    with tf.GradientTape(persistent=True) as tape:  # NN prediction of the derivative of true function via AD
-        yn_tape = xn_tape
-        for layer in nn_model.layers:
-            yn_tape = layer(yn_tape)
-    dy_nn = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Np, ydim, xdim)
+#  Evaluate function and derivative at plotting points
+y_plot = yx(x_plot)  # true function
+dy_plot = dyx(x_plot)  # derivative of true function
+y_nn = nn_model.predict(x_plot).reshape(Np, ydim)  # NN prediction of function
+xn_tape = tf.Variable(x_plot, dtype=tf.float64)
+with tf.GradientTape(persistent=True) as tape:  # NN prediction of the derivative of true function via AD
+    yn_tape = xn_tape
+    for layer in nn_model.layers:
+        yn_tape = layer(yn_tape)
+dy_nn = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Np, ydim, xdim)
 
-    #  Plot Functions and Derivatives (WILL ADD SUBPLOTS AND TITLES LATER. MAYBE ALSO SUPPORT FOR MORE PLOT DIMENSIONS)
-    if xdim == 1:
-        # Plot Function
-        fig = plt.figure()
-        plt.plot(x_plot, y_plot, 'g')
-        plt.plot(x_plot, y_nn, 'b')
-        plt.show()
+# Evaluate function and derivative at plotting points (via automatic differentiation)
+# Plot Function
+fig = plt.figure(1)
+plt.plot(x_plot, y_plot, 'g', label='Ground-truth')
+plt.plot(x_plot, y_nn, 'b', label='NN prediction')
+plt.xlabel('x')
+plt.ylabel('y')
+plt.title('Example Function')
+plt.legend()
 
-        # Plot Derivatives
-        fig = plt.figure()
-        plt.plot(x_plot, dy_plot.reshape(Np, 1), 'g')
-        plt.plot(x_plot, dy_nn.reshape(Np, 1), 'c')
-        plt.show()
-    elif xdim == 2:
-        # Plot True Function
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
-                        x_plot[:, 1].reshape(step_num, step_num),
-                        y_plot.reshape(step_num, step_num))
-        plt.show()
+# Plot Derivatives
+fig = plt.figure(2)
+plt.plot(x_plot, dy_plot.reshape(Np, 1), 'g', label='Ground-truth derivative')
+plt.plot(x_plot, dy_nn.reshape(Np, 1), 'c', label='Neural network-based derivative')
+plt.xlabel('x')
+plt.ylabel('dy/dx')
+plt.title('Derivative of Example function')
+plt.legend()
 
-        # Plot Predicted Function
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
-        ax.plot_surface(x_plot[:, 0].reshape(step_num, step_num),
-                        x_plot[:, 1].reshape(step_num, step_num),
-                        y_nn.reshape(step_num, step_num))
-        plt.show()
+# Show Figures
+plt.show()

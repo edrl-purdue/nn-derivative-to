@@ -1,26 +1,23 @@
-# by Joel C. Najmon
+# Train Neural Network Material Model for Homogenization-based Topology Optimization
+# by Joel Najmon
 # Python 3.9
-# IMPORT PACKAGES
-import numpy as np  # version 1.24.3
-import scipy as sp
+
+# %% IMPORT PACKAGES
+import numpy as np  # version 1.23.5
+import scipy as sp  # version 1.10.1
 import tensorflow as tf  # version 2.12.0
+import matplotlib  # version 3.7.1
+matplotlib.use('TkAgg')
 import time
 
 # %% LOAD FEATURE SETS
-# mat = sp.io.loadmat('Hom_based_CH_2D_N100_nel100.mat', squeeze_me=True)
-# mat = sp.io.loadmat('Hom_based_CH_2D_N1000_nel100.mat', squeeze_me=True)
-mat = sp.io.loadmat('Hom_based_CH_2D_N10000_nel100.mat', squeeze_me=True)
-# mat = sp.io.loadmat('Hom_based_CH_2D_N100000_nel100.mat', squeeze_me=True)
-# mat = sp.io.loadmat('Hom_based_CH_2D_N1000000_nel100.mat', squeeze_me=True)
+mat = sp.io.loadmat('HBTO_CH_2D_N10000_100x100.mat', squeeze_me=True)
 
 SP_para = mat['SP_para']
 SP_C = mat['SP_C']
-SP_C_rot = mat['SP_C_rot']
 
 X = SP_para[:, 0:2]
 Y = SP_C[:, [0, 1, 2, 5]]
-# X = SP_para
-# Y = SP_C_rot
 N = SP_para.shape[0]  # total number of feature sets for training (70%), testing (15%), and validation (15%)
 ydim = Y.shape[1]  # y dimension
 xdim = X.shape[1]  # x dimension
@@ -32,7 +29,7 @@ x_test = X[int(np.round(N * 0.85, decimals=0)):N, :]  # test set (15%)
 y_test = Y[int(np.round(N * 0.85, decimals=0)):N, :]  # test set (15%)
 
 # %% TRAIN NN
-reps = int(1)  # number of NNs to train
+reps = int(1)  # number of NNs to train (for training more than 1 NN so that the best can be chosen from the lot)
 NL = int(1)  # number of hidden layers
 NN = int(64)  # number of neurons per hidden layer
 hidden_activation = 'sigmoid'  # activation function of hidden layer
@@ -54,7 +51,6 @@ for n in range(reps):
     optimizer = tf.keras.optimizers.Adam(learning_rate=0.001)  # set optimizer
 
     # Compile NN
-    # kernel_reg = tf.keras.regularizers.l2(1e-2)  # define kernel regularizer
     kernel_reg = None  # define kernel regularizer
     for i in range(NL):
         nn_model.add(tf.keras.layers.Dense(NN, hidden_activation, kernel_regularizer=kernel_reg))  # create hidden layers
@@ -65,7 +61,6 @@ for n in range(reps):
     nn_model.compile(loss=loss, optimizer=optimizer, metrics=['mse'])  # compile NN
 
     # Train NN
-    # nn_model.fit(x_train, y_train, batch_size=256, epochs=1000, verbose=1)
     stop_early = tf.keras.callbacks.EarlyStopping(monitor='mse', patience=5)
     nn_model.fit(x_train, y_train, batch_size=32, epochs=5000, verbose=1, validation_split=(0.15 / 0.85))
     models.append(nn_model)
@@ -85,4 +80,5 @@ print('NEURAL NETWORK PERFORMANCE')
 print('MSE: ', mse[nnind])
 print('Time:', time.time() - t, 'seconds')
 
-# nn_model.save('ANN_HB_' + '{:.0e}'.format(N))
+nn_model.save('NN_model_HBTO_' + '{:.0e}'.format(N) + 'new_model')  # save model with 'new_model' flag so that it does
+# not overwrite the original 'NN_model_HBTO_1e+04' models that were used in the paper.

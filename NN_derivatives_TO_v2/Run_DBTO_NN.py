@@ -1,10 +1,18 @@
-import numpy as np
+# Perform Density-based Topology Optimization with a Neural network material model
+# by Joel Najmon and Andres Tovar
+# Python 3.9
+
+# %% IMPORT PACKAGES
+import numpy as np  # version 1.23.5
 import numpy.matlib as npm
-import scipy as sp
+import scipy as sp  # version 1.10.1
 from scipy.sparse import csc_matrix, coo_matrix
 from scipy.sparse.linalg import spsolve
+import tensorflow as tf  # version 2.12.0
+import matplotlib.pyplot as plt  # version 3.7.1
+import matplotlib  # version 3.7.1
+matplotlib.use('TkAgg')
 from math import ceil
-import tensorflow as tf
 
 
 # Element stiffness matrix for mechanical analysis
@@ -125,13 +133,13 @@ def filterprep(model):
     return H, Hs
 
 
-# Actual filter function
+# Filter function
 def filterfun(x, dc, dv, H, Hs, ft):
     nelx = x.shape[1]
     nely = x.shape[0]
     dcf = dc
     dvf = dv
-    if ft == 1:
+    if ft == 1:  # sensitivity filter
         xdc = x * dc
         xdc = xdc.reshape(-1, 1, order='F')
         tmat = npm.repmat(1e-3, nely, nelx)
@@ -139,7 +147,7 @@ def filterfun(x, dc, dv, H, Hs, ft):
         dcf = H * xdc / Hs / tmax
         dcf = dcf.reshape(nely, nelx, order='F')
         dvf = dv
-    elif ft == 2:
+    elif ft == 2:  # density filter
         xdc = dc.reshape(-1, 1, order='F')
         xdv = dv.reshape(-1, 1, order='F')
         dcf = H * (xdc / Hs)
@@ -149,7 +157,7 @@ def filterfun(x, dc, dv, H, Hs, ft):
     return dcf, dvf
 
 
-# Actual finite element analysis
+# Finite element analysis
 def feafun(xPhys, model):
     if model.ft == 1:
         xPhys = xPhys
@@ -157,19 +165,17 @@ def feafun(xPhys, model):
         xPhys = np.asarray(model.H * xPhys.reshape(-1, 1, order='F') / model.Hs).flatten('F')
 
     # sK vector
-    # KEvec = KE.reshape(-1, 1, order='F')
-    # xPvec = xPhys.reshape(-1, 2, order='F').squeeze()
-    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])
-    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9
+    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])  # minimum stiffness tensor
+    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9  # maximum stiffness tensor
     x_test = xPhys
     C0 = np.ones((x_test.shape[0], 4))
     C0[:, 0] = C0[:, 0] * Cmax[0, 0]
     C0[:, 1] = C0[:, 1] * Cmax[1, 0]
     C0[:, 2] = C0[:, 2] * Cmax[1, 1]
     C0[:, 3] = C0[:, 3] * Cmax[2, 2]
-    C_pred = model.nn_model.predict(x_test, verbose=0) * C0
+    C_pred = model.nn_model.predict(x_test, verbose=0) * C0  # predict SIMP stiffness tensor
 
-    # FE-ANALYSIS
+    # FEA
     sK_mat = np.zeros((64, xPhys.shape[0]))
     for xx in np.arange(0, xPhys.shape[0]):
         C = np.array([[C_pred[xx, 0], C_pred[xx, 1], 0], [C_pred[xx, 1], C_pred[xx, 2], 0], [0, 0, C_pred[xx, 3]]])
@@ -185,27 +191,25 @@ def feafun(xPhys, model):
     K = coo_matrix((sKshp, (iKint, jKint)))
     K = 0.5 * (K.transpose() + K)
 
-    # SOLVE FINITE ELEMENT EQUATION
-    U = np.zeros((dofs, 1))
+    # Solve finite element equation
+    U = np.zeros((model.dofs, 1))
     K = csc_matrix(K)
     F = csc_matrix(model.F)
     U[model.freedofs, :] = spsolve(K[model.freedofs, model.freedofs.reshape(-1, 1, order='F')],
                              F[model.freedofs, :]).reshape(-1, 1, order='F')
     U[model.fixeddofs, :] = 0
 
-    # OBJECTIVE FUNCTION
-    # Element compliance matrix
-    ceU = U[model.edofMat][:, :, 0]
+    # Objective function
+    ceU = U[model.edofMat][:, :, 0]  # Element compliance matrix
     ceUKU = np.zeros(xPhys.shape[0])
     for xx in np.arange(0, xPhys.shape[0]):
         KE = sK_mat[:, xx].reshape(8, 8, order='F')
         ceUKU[xx] = np.matmul(np.matmul(ceU[xx, :], KE), ceU[xx, :])
-    # ceUKU = (ceU @ KE) * ceU
-    # ceUKUsum = ceUKU.sum(axis=0)
-    # ce = ceUKU.reshape((nely, nelx), order='F')
 
     return sum(ceUKU)
 
+
+# Finite element analysis with sensitivity coefficients
 def dfeafun(xPhys, model):
     if model.ft == 1:
         xPhys = xPhys
@@ -213,20 +217,18 @@ def dfeafun(xPhys, model):
         xPhys = np.asarray(model.H * xPhys.reshape(-1, 1, order='F') / model.Hs).flatten('F')
 
     # sK vector
-    # KEvec = KE.reshape(-1, 1, order='F')
-    # xPvec = xPhys.reshape(-1, 2, order='F').squeeze()
-    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])
-    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9
+    Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])  # minimum stiffness tensor
+    Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9  # maximum stiffness tensor
     x_test = xPhys
     C0 = np.ones((x_test.shape[0], 4))
     C0[:, 0] = C0[:, 0] * Cmax[0, 0]
     C0[:, 1] = C0[:, 1] * Cmax[1, 0]
     C0[:, 2] = C0[:, 2] * Cmax[1, 1]
     C0[:, 3] = C0[:, 3] * Cmax[2, 2]
-    C_pred = model.nn_model.predict(x_test, verbose=0) * C0
-    dC_pred = (dcfun(x_test, model.nn_model).reshape(-1, 1, order='F') * C0).reshape(-1, 4, 1, order='F')
+    C_pred = model.nn_model.predict(x_test, verbose=0) * C0  # predict SIMP stiffness tensor
+    dC_pred = (dcfun(x_test, model.nn_model).reshape(-1, 1, order='F') * C0).reshape(-1, 4, 1, order='F')  # neural network-based sensitivity coefficients
 
-    # FE-ANALYSIS
+    # FEA
     sK_mat = np.zeros((64, xPhys.shape[0]))
     for xx in np.arange(0, xPhys.shape[0]):
         C = np.array([[C_pred[xx, 0], C_pred[xx, 1], 0], [C_pred[xx, 1], C_pred[xx, 2], 0], [0, 0, C_pred[xx, 3]]])
@@ -239,7 +241,6 @@ def dfeafun(xPhys, model):
     for dd in np.arange(0, 1):
         for xx in np.arange(0, xPhys.shape[0]):
             dC = np.array([[dC_pred[xx, 0, dd], dC_pred[xx, 1, dd], 0], [dC_pred[xx, 1, dd], dC_pred[xx, 2, dd], 0], [0, 0, dC_pred[xx, 3, dd]]])
-            # C = np.minimum(np.maximum(C, Cmin), Cmax)
             dKEvec = kefun_C(dC).reshape(-1, 1, order='F')
             sdK_mat[:, xx, dd] = dKEvec.squeeze()
 
@@ -250,43 +251,39 @@ def dfeafun(xPhys, model):
     K = coo_matrix((sKshp, (iKint, jKint)))
     K = 0.5 * (K.transpose() + K)
 
-    # SOLVE FINITE ELEMENT EQUATION
-    U = np.zeros((dofs, 1))
+    # Solve finite element equation
+    U = np.zeros((model.dofs, 1))
     K = csc_matrix(K)
     F = csc_matrix(model.F)
     U[model.freedofs, :] = spsolve(K[model.freedofs, model.freedofs.reshape(-1, 1, order='F')],
                              F[model.freedofs, :]).reshape(-1, 1, order='F')
     U[model.fixeddofs, :] = 0
 
-    # OBJECTIVE FUNCTION
-    # Element compliance matrix
-    ceU = U[model.edofMat][:, :, 0]
+    # Objective function
+    ceU = U[model.edofMat][:, :, 0]  # Element compliance matrix
     ceUKU = np.zeros(xPhys.shape[0])
     for xx in np.arange(0, xPhys.shape[0]):
         KE = sK_mat[:, xx].reshape(8, 8, order='F')
         ceUKU[xx] = np.matmul(np.matmul(ceU[xx, :], KE), ceU[xx, :])
-    # ceUKU = (ceU @ KE) * ceU
-    # ceUKUsum = ceUKU.sum(axis=0)
-    # ce = ceUKU.reshape((nely, nelx), order='F')
 
+    # Derivative of objective function
     ceUdKU = np.zeros((xPhys.shape[0], 1))
     for dd in np.arange(0, 1):
         for xx in np.arange(0, xPhys.shape[0]):
             dKE = sdK_mat[:, xx, dd].reshape(8, 8, order='F')
             ceUdKU[xx, dd] = np.matmul(np.matmul(ceU[xx, :], dKE), ceU[xx, :])
 
-    # print(' Obj.: ', '{:4.2f}'.format(sum(ceUKU)),
-          # ' Vol.: ', '{:4.2f}'.format(np.sum(xPhys) / (nelx * nely)))
-    # print((ceUdKU > 0).max())
-
     dc = -1 * ceUdKU
     dv = np.ones(dc.shape)
 
+    # Apply filter
     dcf, dvf = filterfun(xPhys.reshape((model.nely, model.nelx), order='F'), dc.reshape((model.nely, model.nelx), order='F'),
                          dv.reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
 
     return np.asarray(dcf).flatten('F')
 
+
+# Neural network-based sensitivity coefficients
 def dcfun(x_test, nn_model):
     x_test = x_test.reshape(-1, 1, order='F')
     Nt = x_test.shape[0]
@@ -411,20 +408,39 @@ def dcfun(x_test, nn_model):
     return dC_pred
 
 
+# Non-linear volume fraction constraint
 def nlcon(xPhys):
     one1 = np.ones(xPhys.shape)
     return (np.dot(one1, xPhys) / (model.nelx * model.nely)) - model.volfrac
 
 
+# Derivative of non-linear volume fraction constraint
 def dnlcon(xPhys):
     dc = np.ones(xPhys.shape)
     dv = np.ones(xPhys.shape)
+
+    # Apply filter
     dcf, dvf = filterfun(xPhys.reshape((model.nely, model.nelx), order='F'), dc.reshape((model.nely, model.nelx), order='F'),
               dv.reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
     return dvf.flatten('F')
 
+
+# Save select iteration information
+def save_step(x, it):
+    # Define which iterations get saved
+    if it.niter == 1 or it.niter == 10 or it.niter == 100 or it.niter % 500 == 0:
+        xopt = x.reshape(model.nely, model.nelx, order='F')
+        topt = it.execution_time
+        comp = it.fun
+        niter = it.niter
+        dc = it.grad
+
+        filename = 'DBTO_NN_result_dy' + str(model.der_type) + '/DBTO_NN_dy' + str(model.der_type) + '_it' + str(niter)
+        np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc=dc, niter=niter)  # save file
+
+
 # Main function
-def top88(model):
+def DBTO(model):
     bds = sp.optimize.Bounds(lb=0, ub=1, keep_feasible=True)
     con = sp.optimize.NonlinearConstraint(nlcon, lb=0.0, ub=0.0, jac=dnlcon, keep_feasible=True)
     res = sp.optimize.minimize(feafun,
@@ -434,8 +450,9 @@ def top88(model):
                                jac=dfeafun,
                                bounds=bds,
                                constraints=con,
-                               tol=1e-3,
-                               options={'maxiter': model.maxiter, 'disp': True, 'verbose': 3})
+                               tol=model.tolx,
+                               options={'maxiter': model.maxiter, 'disp': True, 'verbose': 3},
+                               callback=save_step)
 
     return res
 
@@ -450,7 +467,7 @@ class model:
         self.fixeddofs = None  # Supports
         self.freedofs = None  # Free dofs
         self.KE = None  # Element stiffness matrix
-        self.nn_model = None  # ANN model
+        self.nn_model = None  # NN model
         self.nelx = None  # Number of elements in x-direction
         self.nely = None  # Number of elements in y-direction
         self.H = None
@@ -462,28 +479,29 @@ class model:
         self.volfrac = None
         self.rmin = None
         self.maxiter = None
+        self.tolx = None
         self.E0 = None  # Void stiffness
         self.Emin = None  # Fluid stiffness
         self.nu = None  # Poissons ratio
 
 
-# EXAMPLE
-
-# DEFINE MODEL AND OPTIMIZATION SETTINGS
-model.nelx = 80  # number of elements in the x-direction
-model.nely = 40  # number of elements in the y-direction
+# %% RUN DBTO MBB EXAMPLE
+# Define model and optimization settings
+model.nelx = 60  # number of elements in the x-direction
+model.nely = 30  # number of elements in the y-direction
 model.volfrac = 0.5  # volume fraction constraint
-model.rmin = 3.6  # filter radius
-model.ft = 1  # Filter option (1 or 2)
+model.rmin = 2.7  # filter radius
+model.ft = 1  # Filter option (1 = sensitivity filter or 2 = density filter)
 model.maxiter = 1000  # Number of iterations
+model.tolx = 1e-3
 
-# INITIALIZE MODEL DETAILS
+# Initialize model details
 x0 = (np.ones((model.nely * model.nelx, 1)) * model.volfrac).flatten()  # initial design
 model.x = x0  # initial design
 model.edofMat, model.iK, model.jK = feaprep(model)  # prepare fea
 model.H, model.Hs = filterprep(model)  # prepare filter
-model.nn_model = tf.keras.models.load_model("ANN_SIMP_1e+04")  # load ann model
-model.der_type = 1  # type of derivative method to use
+model.nn_model = tf.keras.models.load_model("NN_model_DBTO_1e+04")  # load nn model
+model.der_type = 4  # type of derivative method to use (1 = Analytical Der., 2 = CFD, 3 = CSM, 4 = Automatic Diff.)
 
 # Force vector for the MBB problem
 dofs = 2 * (model.nelx + 1) * (model.nely + 1)
@@ -500,13 +518,20 @@ fxd2 = 2 * (model.nelx + 1) * (model.nely + 1) - 1
 model.fixeddofs = np.block([fxd1, fxd2])
 model.freedofs = np.setdiff1d(np.arange(0, dofs), model.fixeddofs)
 
+# Solve topology optimization problem
 dc0 = dfeafun(x0, model)  # compute initial sensitivity coefficients
-res = top88(model)  # solve TO problem
+res = DBTO(model)  # solve TO problem
 
+# Record and save output data
 xopt = res.x.reshape(model.nely, model.nelx, order='F')
 topt = res.execution_time
 comp = res.fun
+niter = res.niter
+dc = res.grad
 
-filename = 'SIMPTO_ANN_output_dy' + str(model.der_type) + '_HF'
-np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc0=dc0)
+filename = 'DBTO_NN_result_dy' + str(model.der_type) + '/DBTO_NN_dy' + str(model.der_type) + '_it' + str(niter) + 'final'
+np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc0=dc0, dc=dc, niter=niter)  # save final design
 
+# Plot final topology
+plt.imshow(xopt, extent=[0, model.nelx, 0, model.nely], cmap='Greys')
+plt.show()
