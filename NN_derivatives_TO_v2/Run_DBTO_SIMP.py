@@ -309,7 +309,7 @@ def save_step(x, it):
         niter = it.niter
         dc = it.grad
 
-        filename = 'DBTO_SIMP_result_dy' + str(model.der_type) + '/DBTO_SIMP_dy' + str(model.der_type) + '_it' + str(niter)
+        filename = 'DBTO_SIMP_result/DBTO_SIMP_it' + str(niter)
         np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc=dc, niter=niter)  # save file
 
 
@@ -375,7 +375,6 @@ x0 = (np.ones((model.nely * model.nelx, 1)) * model.volfrac).flatten()  # initia
 model.x = x0  # initial design
 model.edofMat, model.iK, model.jK = feaprep(model)  # prepare fea
 model.H, model.Hs = filterprep(model)  # prepare filter
-model.der_type = 0  # type of derivative method to use (0 = SIMP)
 
 # Force vector for the MBB problem
 dofs = 2 * (model.nelx + 1) * (model.nely + 1)
@@ -403,7 +402,7 @@ comp = res.fun
 niter = res.niter
 dc = res.grad
 
-filename = 'DBTO_SIMP_result_dy' + str(model.der_type) + '/DBTO_SIMP_dy' + str(model.der_type) + '_it' + str(niter) + 'final'
+filename = 'DBTO_SIMP_result/DBTO_SIMP_it' + str(niter) + 'final'
 np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc0=dc0, dc=dc, niter=niter)  # save final design
 
 # Plot final topology

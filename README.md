@@ -24,7 +24,10 @@ This is a Python code repository for the 2023 journal paper: ***"Evaluation of N
  * **DBTO_NN_result_dy3**: This folder contains the outputs from *Run_DBTO_NN.py* when using neural network-based sensitivity coefficients produced with the complex step method (i.e., dy3).
  * **DBTO_NN_result_dy4**: This folder contains the outputs from *Run_DBTO_NN.py* when using neural network-based sensitivity coefficients produced with automatic differentiation (i.e., dy4).
  * **DBTO_SIMP_result**: This folder contains the outputs from *Run_DBTO_SIMP.py* when using sensitivity coefficients analytically derived from the SIMP material model.
- * **HBTO_NN_result_dy1**: This folder contains the outputs from *Run_DBTO_NN.py* when using neural network-based sensitivity coefficients produced with analytical derivatives (i.e., dy1).
+ * **HBTO_NN_result_dy1**: This folder contains the outputs from *Run_HBTO_NN.py* when using neural network-based sensitivity coefficients produced with analytical derivatives (i.e., dy1).
+ * **HBTO_NN_result_dy2**: This folder contains the outputs from *Run_HBTO_NN.py* when using neural network-based sensitivity coefficients produced with the central finite difference method (i.e., dy2).
+ * **HBTO_NN_result_dy3**: This folder contains the outputs from *Run_HBTO_NN.py* when using neural network-based sensitivity coefficients produced with the complex step method (i.e., dy3).
+ * **HBTO_NN_result_dy4**: This folder contains the outputs from *Run_HBTO_NN.py* when using neural network-based sensitivity coefficients produced with automatic differentiation (i.e., dy4).
 
 ### Instructions for running examples:
 More detailed instructions coming soon...
