@@ -13,7 +13,8 @@ The repository includes the following files:
  * Run_DBTO_SIMP.py: This script executes DBTO on the MBB beam example using the SIMP material model.
  * Run_HBTO_NN.py: This script executes HBTO on the MBB beam example using the neural network material model.
  * Appendix_B_example.py: This script trains the MLP and performs the analytical derivative calculations for the Appendix B example.
-
+\
+\
  The repository includes the following folders:
  * venv: This folder contains the virtual Python 3.9 environment along with all of the required packages.
  * NN_model_DBTO_1e+04: This folder contains the neural network material model for DBTO trained with TensorFlow.
