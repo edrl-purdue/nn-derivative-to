@@ -1,7 +1,7 @@
 # nn-derivative-to
-Evaluation of Neural Network-based Derivatives for Topology Optimization
+# Evaluation of Neural Network-based Derivatives for Topology Optimization
 
-By: Joel Najmon and Andres Tovar
+## By: Joel Najmon and Andres Tovar
 
 This is a Python code repository for the 2023 journal paper: "Evaluation of Neural Network-based Derivatives for Topology Optimization" submitted to ASME's Journal of Mechanical Design in July 2023. The paper is currently under review. This repository includes the multilayer preceptron (MLP) models utilized in the paper and their training scripts, the density-based topology optimization (DBTO) and homogenization-based topology optimization (HBTO) methods, and a general implementation of neural network-based derivative methods for an arbitrary MLP architecture. The four derivative methods implemented in this repository are analytical derivatives, the central finite difference method, the complex step method, and automatic differentiation.
 
