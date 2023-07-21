@@ -13,9 +13,9 @@ This is a Python code repository for the 2023 journal paper: ***"Evaluation of N
  * **Run_DBTO_SIMP.py**: This script executes DBTO on the MBB beam example using the SIMP material model.
  * **Run_HBTO_NN.py**: This script executes HBTO on the MBB beam example using the neural network material model.
  * **Appendix_B_example.py**: This script trains the MLP and performs the analytical derivative calculations for the Appendix B example.
+ * **HBTO_CH_2D_N10000_100x100.mat**: A mat database file that contains the parameters and homogenized stiffness tensors of microstructures with a rectangular hole. Used in *Train_HBTO_NN.py*.
 
 ### The repository includes the following folders:
- * **venv**: This folder contains the virtual Python 3.9 environment along with all of the required packages.
  * **NN_model_DBTO_1e+04**: This folder contains the neural network material model for DBTO trained with TensorFlow.
  * **NN_model_HBTO_1e+04**: This folder contains the neural network material model for HBTO trained with TensorFlow.
  * **JMD Journal Paper Results**: This folder contains results from the DBTO and HBTO scripts that were presented in the paper.
