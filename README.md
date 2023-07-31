@@ -44,14 +44,14 @@ This is a Python code repository for the 2023 journal paper: ***"Evaluation of N
  * Line 30 defines the total number of features sets. The default dataset division is 70% for the training dataset, and 15% for the testing and validation datasets, each.
  * Lines 41-45 define the number of hidden layers, number of neurons per hidden layer, the hidden activation function, the output activation function, and the number of repeated NNs to train when searching for the best peforming one.
  * The NN's performance is displayed along with plots of the function and its derivative from the ground-truth function and the neural network-based evaluation.
- * The model is saved in the NN_model_DBTO_## folder where ## is the total number of features sets defined on Line 30.
+ * The model is saved in the *NN_model_DBTO_##* folder where ## is the total number of features sets defined on Line 30.
 
  **Train_HBTO_NN.py**
  * Run this script to train a neural network material model for HBTO similar to the one utilized in the paper. Note that this script is not deterministic.
- * Line 14 loads the precomputed database file: HBTO_CH_2D_N10000_100x100.mat. The default dataset division is 70% for the training dataset, and 15% for the testing and validation datasets, each.
+ * Line 14 loads the precomputed database file: *HBTO_CH_2D_N10000_100x100.mat*. The default dataset division is 70% for the training dataset, and 15% for the testing and validation datasets, each.
  * Lines 32-36 define the number of hidden layers, number of neurons per hidden layer, the hidden activation function, the output activation function, and the number of repeated NNs to train when searching for the best peforming one.
- * * The NN's performance is displayed along with plots of the function and its derivative from the ground-truth function and the neural network-based evaluation.
- * The model is saved in the NN_model_HBTO_## folder where ## is the total number of features sets loaded on Line 14.
+ * The NN's performance is displayed along with plots of the function and its derivative from the ground-truth function and the neural network-based evaluation.
+ * The model is saved in the *NN_model_HBTO_##* folder where ## is the total number of features sets loaded on Line 14.
 
 **Run_DBTO_NN.py**
  * Run this script to perform DBTO on an MBB beam example with the neural network material model.
@@ -59,13 +59,13 @@ This is a Python code repository for the 2023 journal paper: ***"Evaluation of N
  * Line 503 is where the name of the NN model folder is supplied for loading.
  * Line 504 is where the type of neural network-based derivative method is selected (i.e., 1 = Analytical Der., 2 = CFD, 3 = CSM, 4 = Automatic Diff.).
  * Lines 506-519 are where the loads and boundary conditions of the MBB beam example are defined.
- * The final output is displayed and saved in the DBTO_NN_result_dy# folder.
+ * The final output is displayed and saved in the *DBTO_NN_result_dy#* folder.
 
  **Run_DBTO_SIMP.py**
  * Run this script to perform DBTO on an MBB beam example with the SIMP material model.
  * Line 363-371 can be modified to adjust the model and optimization settings.
  * Lines 379-392 are where the loads and boundary conditions of the MBB beam example are defined.
- * The final output is displayed and saved in the DBTO_SIMP_result folder.
+ * The final output is displayed and saved in the *DBTO_SIMP_result* folder.
 
  **Run_HBTO_NN.py**
  * Run this script to perform HBTO on an MBB beam example with the neural network material model.
@@ -73,7 +73,7 @@ This is a Python code repository for the 2023 journal paper: ***"Evaluation of N
  * Line 526 is where the name of the NN model folder is supplied for loading.
  * Line 527 is where the type of neural network-based derivative method is selected (i.e., 1 = Analytical Der., 2 = CFD, 3 = CSM, 4 = Automatic Diff.).
  * Lines 529-542 are where the loads and boundary conditions of the MBB beam example are defined.
- * The final output is displayed and saved in the HBTO_NN_result_dy# folder.
+ * The final output is displayed and saved in the *HBTO_NN_result_dy#* folder.
 
  **Appendix_B_example.py**
  * Run this script perform the analytical derivative example of Appendix B. Note that this script is deterministic and will produce the same values found in the appendix.
