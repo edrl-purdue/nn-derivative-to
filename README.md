@@ -30,7 +30,25 @@ This is a Python code repository for the 2023 journal paper: ***"Evaluation of N
  * **HBTO_NN_result_dy4**: This folder contains the outputs from *Run_HBTO_NN.py* when using neural network-based sensitivity coefficients produced with automatic differentiation (i.e., dy4).
 
 ### Instructions for running examples:
-More detailed instructions coming soon...
+**NN_derivatives_examples.py**
+ * Can simply run script with the default example.
+ * Lines 14-179 provide several multivariable regression functions as examples. The input and output formatting is detailed here for user modification.
+ * Line 182 defines the total number of features sets. The default dataset division is 70% for the training dataset, and 15% for the testing and validation datasets, each.
+ * Lines 192-195 define the number of hidden layers, number of neurons per hidden layer, the hidden activation function, and the output activation function.
+ * New activation functions and their derivatives can be added to the functions of Lines 225 and 235.
+ * The NN's performance and the error of the four derivative methods is displayed.
+ * For low dimensional example functions, the function and its derivative are plotted for the ground-truth and neural network-based evaluations.
+
+**NN_derivatives_examples.py**
+ * Can simply run script with the default example.
+
+ * **Train_DBTO_NN.py**: This script trains the neural network material model for DBTO.
+ * **Train_HBTO_NN.py**: This script trains the neural network material model for HBTO.
+ * **Run_DBTO_NN.py**: This script executes DBTO on the MBB beam example using the neural network material model.
+ * **Run_DBTO_SIMP.py**: This script executes DBTO on the MBB beam example using the SIMP material model.
+ * **Run_HBTO_NN.py**: This script executes HBTO on the MBB beam example using the neural network material model.
+ * **Appendix_B_example.py**: This script trains the MLP and performs the analytical derivative calculations for the Appendix B example.
+ * **HBTO_CH_2D_N10000_100x100.mat**: A mat database file that contains the parameters and homogenized stiffness tensors of microstructures with a rectangular hole. Used in *Train_HBTO_NN.py*.
 
 ### Abstract of the corresponding paper, Evaluation of Neural Network-based Derivatives for Topology Optimization:
 Neural networks have rapidly grown in popularity for modeling complex non-linear relationships. The computational efficiency and flexibility of neural networks have made them popular for optimization problems, including topology optimization. However, the derivatives of a neural network’s output are crucial for gradient-based optimization algorithms. Recently, there have been several contributions towards improving derivatives of neural network targets; however, there is yet to be a comparative study on the different derivative methods for the sensitivity of the input features on the neural network targets. Therefore, this paper aims to evaluate four derivative methods: analytical derivatives, central finite difference method, complex step method, and automatic differentiation. These methods are implemented into density-based and homogenization-based topology optimization. The derivative methods studied include. For density-based topology optimization, a multilayer perceptron approximates Young's modulus for the solid-isotropic-material-with-penalization (SIMP) model. For homogenization-based topology optimization, a multilayer perceptron approximates the homogenized stiffness tensor of a square cell microstructure with a rectangular hole. The comparative study is performed by solving a two-dimensional topology optimization problem using the sensitivity coefficients from each derivative method. Evaluation includes initial sensitivity coefficients, convergence plots, and the final topologies, compliance, and design variables. The findings demonstrate that neural network-based sensitivity coefficients are sufficient for density-based and homogenization-based topology optimization. The analytical derivative, complex step, and automatic differentiation methods produced identical sensitivity coefficients. The study’s open-source code is provided through an included Python repository.
