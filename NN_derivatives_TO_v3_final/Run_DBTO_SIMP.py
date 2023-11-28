@@ -1,4 +1,4 @@
-# Perform Homogenization-based Topology Optimization with a Neural network material model
+0# Perform Density-based Topology Optimization with the SIMP model
 # by Joel Najmon and Andres Tovar
 # Python 3.9
 
@@ -7,8 +7,7 @@ import numpy as np  # version 1.23.5
 import numpy.matlib as npm
 import scipy as sp  # version 1.10.1
 from scipy.sparse import csc_matrix, coo_matrix
-from scipy.sparse.linalg import spsolve, norm
-import tensorflow as tf  # version 2.12.0
+from scipy.sparse.linalg import spsolve
 import matplotlib.pyplot as plt  # version 3.7.1
 import matplotlib  # version 3.7.1
 matplotlib.use('TkAgg')
@@ -159,24 +158,26 @@ def filterfun(x, dc, dv, H, Hs, ft):
 
 # Finite element analysis
 def feafun(xPhys, model):
-    xPhys = xPhys.reshape(-1, 2, order='F')
-
     if model.ft == 1:
         xPhys = xPhys
     elif model.ft == 2:
-        xPhys[:, 0] = np.asarray(model.H * xPhys[:, 0].reshape(-1, 1, order='F') / model.Hs).flatten('F')
-        xPhys[:, 1] = np.asarray(model.H * xPhys[:, 1].reshape(-1, 1, order='F') / model.Hs).flatten('F')
+        xPhys = np.asarray(model.H * xPhys.reshape(-1, 1, order='F') / model.Hs).flatten('F')
 
     # sK vector
     Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])  # minimum stiffness tensor
     Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9  # maximum stiffness tensor
     x_test = xPhys
-    C_pred = model.nn_model.predict(x_test, verbose=0)  # predict stiffness tensor
+    C0 = np.ones((x_test.shape[0], 4))
+    C0[:, 0] = C0[:, 0] * Cmax[0, 0]
+    C0[:, 1] = C0[:, 1] * Cmax[1, 0]
+    C0[:, 2] = C0[:, 2] * Cmax[1, 1]
+    C0[:, 3] = C0[:, 3] * Cmax[2, 2]
+    C_simp = np.transpose(npm.repmat((1e-9 + x_test**model.penal*(1 - 1e-9)), 4, 1)) * C0  # SIMP model
 
     # FEA
     sK_mat = np.zeros((64, xPhys.shape[0]))
     for xx in np.arange(0, xPhys.shape[0]):
-        C = np.array([[C_pred[xx, 0], C_pred[xx, 1], 0], [C_pred[xx, 1], C_pred[xx, 2], 0], [0, 0, C_pred[xx, 3]]])
+        C = np.array([[C_simp[xx, 0], C_simp[xx, 1], 0], [C_simp[xx, 1], C_simp[xx, 2], 0], [0, 0, C_simp[xx, 3]]])
         C = np.minimum(np.maximum(C, Cmin), Cmax)
         KEvec = kefun_C(C).reshape(-1, 1, order='F')
         sK_mat[:, xx] = KEvec.squeeze()
@@ -190,7 +191,7 @@ def feafun(xPhys, model):
     K = 0.5 * (K.transpose() + K)
 
     # Solve finite element equation
-    U = np.zeros((model.dofs, 1))
+    U = np.zeros((dofs, 1))
     K = csc_matrix(K)
     F = csc_matrix(model.F)
     U[model.freedofs, :] = spsolve(K[model.freedofs, model.freedofs.reshape(-1, 1, order='F')],
@@ -209,34 +210,36 @@ def feafun(xPhys, model):
 
 # Finite element analysis with sensitivity coefficients
 def dfeafun(xPhys, model):
-    xPhys = xPhys.reshape(-1, 2, order='F')
-
     if model.ft == 1:
         xPhys = xPhys
     elif model.ft == 2:
-        xPhys[:, 0] = np.asarray(model.H * xPhys[:, 0].reshape(-1, 1, order='F') / model.Hs).flatten('F')
-        xPhys[:, 1] = np.asarray(model.H * xPhys[:, 1].reshape(-1, 1, order='F') / model.Hs).flatten('F')
+        xPhys = np.asarray(model.H * xPhys.reshape(-1, 1, order='F') / model.Hs).flatten('F')
 
     # sK vector
     Cmax = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]])  # minimum stiffness tensor
     Cmin = np.array([[1.3462, 0.5769, 0], [0.5769, 1.3462, 0], [0, 0, 0.3846]]) * 1e-9  # maximum stiffness tensor
     x_test = xPhys
-    C_pred = model.nn_model.predict(x_test, verbose=0)  # predict stiffness tensor
-    dC_pred = dcfun(x_test, model.nn_model)  # neural network-based sensitivity coefficients
+    C0 = np.ones((x_test.shape[0], 4))
+    C0[:, 0] = C0[:, 0] * Cmax[0, 0]
+    C0[:, 1] = C0[:, 1] * Cmax[1, 0]
+    C0[:, 2] = C0[:, 2] * Cmax[1, 1]
+    C0[:, 3] = C0[:, 3] * Cmax[2, 2]
+    C_simp = np.transpose(npm.repmat((1e-9 + x_test**model.penal*(1 - 1e-9)), 4, 1)) * C0  # SIMP stiffness tensor
+    dC_simp = (np.transpose(npm.repmat((model.penal * (1 - 1e-9) * x_test**(model.penal - 1)), 4, 1)) * C0).reshape(-1, 4, 1, order='F')  # derivative of SIMP stiffness tensor
 
     # FEA
     sK_mat = np.zeros((64, xPhys.shape[0]))
     for xx in np.arange(0, xPhys.shape[0]):
-        C = np.array([[C_pred[xx, 0], C_pred[xx, 1], 0], [C_pred[xx, 1], C_pred[xx, 2], 0], [0, 0, C_pred[xx, 3]]])
+        C = np.array([[C_simp[xx, 0], C_simp[xx, 1], 0], [C_simp[xx, 1], C_simp[xx, 2], 0], [0, 0, C_simp[xx, 3]]])
         C = np.minimum(np.maximum(C, Cmin), Cmax)
         KEvec = kefun_C(C).reshape(-1, 1, order='F')
         sK_mat[:, xx] = KEvec.squeeze()
     sK_vec = sK_mat.reshape(-1, 1, order='F')
 
     sdK_mat = np.zeros((64, xPhys.shape[0], 2))
-    for dd in np.arange(0, 2):
+    for dd in np.arange(0, 1):
         for xx in np.arange(0, xPhys.shape[0]):
-            dC = np.array([[dC_pred[xx, 0, dd], dC_pred[xx, 1, dd], 0], [dC_pred[xx, 1, dd], dC_pred[xx, 2, dd], 0], [0, 0, dC_pred[xx, 3, dd]]])
+            dC = np.array([[dC_simp[xx, 0, dd], dC_simp[xx, 1, dd], 0], [dC_simp[xx, 1, dd], dC_simp[xx, 2, dd], 0], [0, 0, dC_simp[xx, 3, dd]]])
             dKEvec = kefun_C(dC).reshape(-1, 1, order='F')
             sdK_mat[:, xx, dd] = dKEvec.squeeze()
 
@@ -248,7 +251,7 @@ def dfeafun(xPhys, model):
     K = 0.5 * (K.transpose() + K)
 
     # Solve finite element equation
-    U = np.zeros((model.dofs, 1))
+    U = np.zeros((dofs, 1))
     K = csc_matrix(K)
     F = csc_matrix(model.F)
     U[model.freedofs, :] = spsolve(K[model.freedofs, model.freedofs.reshape(-1, 1, order='F')],
@@ -263,8 +266,8 @@ def dfeafun(xPhys, model):
         ceUKU[xx] = np.matmul(np.matmul(ceU[xx, :], KE), ceU[xx, :])
 
     # Derivative of objective function
-    ceUdKU = np.zeros((xPhys.shape[0], 2))
-    for dd in np.arange(0, 2):
+    ceUdKU = np.zeros((xPhys.shape[0], 1))
+    for dd in np.arange(0, 1):
         for xx in np.arange(0, xPhys.shape[0]):
             dKE = sdK_mat[:, xx, dd].reshape(8, 8, order='F')
             ceUdKU[xx, dd] = np.matmul(np.matmul(ceU[xx, :], dKE), ceU[xx, :])
@@ -273,162 +276,26 @@ def dfeafun(xPhys, model):
     dv = np.ones(dc.shape)
 
     # Apply filter
-    dcf1, dvf1 = filterfun(xPhys[:, 0].reshape((model.nely, model.nelx), order='F'), dc[:, 0].reshape((model.nely, model.nelx), order='F'),
-                         dv[:, 0].reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
-    dcf2, dvf2 = filterfun(xPhys[:, 1].reshape((model.nely, model.nelx), order='F'), dc[:, 1].reshape((model.nely, model.nelx), order='F'),
-                           dv[:, 1].reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
-    dcf = np.zeros(dc.shape)
-    dcf[:, 0] = dcf1.flatten('F')
-    dcf[:, 1] = dcf2.flatten('F')
+    dcf, dvf = filterfun(xPhys.reshape((model.nely, model.nelx), order='F'), dc.reshape((model.nely, model.nelx), order='F'),
+                         dv.reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
 
-    return dcf.flatten('F')
-
-
-# Neural network-based sensitivity coefficients
-def dcfun(x_test, nn_model):
-    Nt = x_test.shape[0]
-    ydim = nn_model.output_shape[1]  # y dimension
-    xdim = x_test.shape[1]  # x dimension
-
-    NL = len(nn_model.layers) - 3  # number of hidden layers
-    NN = nn_model.layers[1].output_shape[1]  # number of neurons per hidden layer
-
-    norm_in_layer = nn_model.layers[0]
-    norm_out_layer = nn_model.layers[-1]
-
-    # DEFINE ACTIVATION FUNCTIONS
-    def act_fn(yn_1, wn, bn, fn):  # activation function yn
-        yn = np.matmul(yn_1, wn) + bn
-        if fn == 'sigmoid':
-            return 1 / (1 + np.exp(-yn))
-        if fn == 'linear':
-            return yn
-        if fn == 'relu':
-            return np.maximum(yn, 0)
-
-    def dact_fn(yn_1, wn, bn, fn):  # derivative of activation function yn with respect to yn_1
-        yn = np.matmul(yn_1, wn) + bn
-        if fn == 'relu':
-            return np.multiply(wn, np.divide(np.maximum(yn, 0), yn))
-        if fn == 'linear':
-            return wn
-        if fn == 'sigmoid':
-            return np.multiply(wn, np.exp(yn)) / ((1 + np.exp(yn)) ** 2)
-
-    # DEFINE NORMALIZATION FUNCTION AND PARAMETERS
-    mean_in = norm_in_layer.mean.numpy()  # mean of input normalization
-    std_in = norm_in_layer.variance.numpy() ** 0.5  # standard deviation of input normalization
-    mean_out = norm_out_layer.mean.numpy()  # mean of output normalization
-    std_out = norm_out_layer.variance.numpy() ** 0.5  # standard deviation of output normalization
-
-    def norm_fn(x, mu, sigma):  # normalization function
-        return np.divide((x - mu), sigma)
-
-    # 1) Analytical Derivative of NN
-    if model.der_type == 1:
-        Wn = []
-        Bn = []
-        An = []
-        for L in np.arange(0, NL + 1):
-            Wn.append(nn_model.layers[L + 1].weights[0].numpy())  # store hidden layer weights
-            Bn.append(nn_model.layers[L + 1].bias.numpy().reshape(1, -1))  # store hidden layer biases
-            An.append(nn_model.layers[L + 1].activation.__name__)  # store hidden layer activation function names
-
-        y_1 = np.zeros((Nt, ydim))  # Manual NN prediction
-        dy_1 = np.zeros((Nt, ydim, xdim))
-        for s in np.arange(0, Nt):  # loop through test feature sets
-            Y0 = norm_in_layer(x_test[s, :]).numpy().reshape(xdim, 1)  # normalize input
-            Yn = [act_fn(Y0.T, Wn[0], Bn[0], An[0])]  # initialize 1st layer output
-            dY0 = dact_fn(Y0.T, Wn[0], Bn[0], An[0])  # initialize 1st layer output's derivative
-            dYn = [
-                np.divide(dY0, std_in.reshape(xdim, 1))]  # normalize derivative of input with standard deviation of layer
-            dy_product = dYn[0]
-
-            for L in np.arange(1,
-                               NL + 1):  # manually loop through layers to calculate analytical derivative with chain rule
-                Yn.append(act_fn(Yn[L - 1], Wn[L], Bn[L], An[L]))  # hidden layer L output
-                dYn.append(dact_fn(Yn[L - 1], Wn[L], Bn[L], An[L]))  # derivative of hidden layer L output
-                dy_product = np.matmul(dy_product, dYn[L])  # derivative of hidden layer L output with respect NN input
-            y_1[s, :] = norm_out_layer(Yn[-1]).numpy()  # de-normalize to get manual NN prediction
-            dy_product = np.divide(dy_product,
-                                   std_out)  # de-normalize derivative of output with standard deviation of layer
-            dy_1[s, :, :] = dy_product.T.reshape(1, ydim, xdim)  # derivative via Analytical Derivative of NN
-        dC_pred = dy_1
-
-    # 2) Central Finite Difference Approximation
-    if model.der_type == 2:
-        h_cfd = 1e-6  # step size
-        dy_2 = np.zeros((Nt, ydim, xdim))
-        for d in np.arange(0, xdim):
-            h_mat = np.zeros((Nt, xdim))
-            h_mat[:, [d]] = np.ones((Nt, 1)) * h_cfd  # perturbation array
-            dy_2[:, :, d] = ((nn_model.predict(x_test + h_mat, verbose=0) - nn_model.predict(x_test - h_mat, verbose=0))
-                             / (2 * h_cfd)).reshape(Nt, ydim)  # derivative via CFDA
-        dC_pred = dy_2
-
-    # 3) Complex Step Derivative Approximation
-    if model.der_type == 3:
-        Wn = []
-        Bn = []
-        An = []
-        for L in np.arange(0, NL + 1):
-            Wn.append(nn_model.layers[L + 1].weights[0].numpy())  # store hidden layer weights
-            Bn.append(nn_model.layers[L + 1].bias.numpy().reshape(1, -1))  # store hidden layer biases
-            An.append(nn_model.layers[L + 1].activation.__name__)  # store hidden layer activation function names
-
-        h_csm = 1e-12  # step size
-        dy_3 = np.zeros((Nt, ydim, xdim))
-        for d in np.arange(0, xdim):  # loop through xdim for partial derivatives
-            h_mat = 0j * np.zeros((1, xdim), dtype='complex')
-            h_mat[0, d] = 1j * h_csm  # perturbation array
-
-            y_csm = np.zeros((Nt, ydim), dtype='complex')
-            for s in np.arange(0, Nt):  # loop through test feature sets
-                Y0 = norm_fn(x_test[s, :] + h_mat, mean_in, std_in).reshape(xdim, 1)  # normalize perturbed input
-                Yn_csm = [act_fn(Y0.T, Wn[0], Bn[0], An[0])]  # initialize 1st layer output
-
-                for L in np.arange(1, NL + 1):  # manual NN prediction so imaginary numbers can be passed
-                    Yn_csm.append(act_fn(Yn_csm[L - 1], Wn[L], Bn[L], An[L]))  # hidden layer L output
-                y_csm[s, :] = norm_fn(Yn_csm[-1], mean_out, std_out)  # de-normalize to get manual NN prediction
-            dy_3[:, :, d] = (np.imag(y_csm) / h_csm)  # derivative via CSDA
-        dC_pred = dy_3
-
-    # 4) Automatic Differentiation
-    if model.der_type == 4:
-        xn_tape = tf.Variable(x_test, dtype=tf.float64)
-        with tf.GradientTape(persistent=True) as tape:
-            yn_tape = xn_tape
-            for layer in nn_model.layers:  # loop through layers
-                yn_tape = layer(yn_tape)
-        dy_4 = tf.reduce_sum(tape.jacobian(yn_tape, xn_tape), axis=[2]).numpy().reshape(Nt, ydim, xdim)  # derivative via AD
-        dC_pred = dy_4
-
-    return dC_pred
+    return np.asarray(dcf).flatten('F')
 
 
 # Non-linear volume fraction constraint
 def nlcon(xPhys):
-    xPhys = xPhys.reshape(-1, 2, order='F')
-    return ((model.nelx * model.nely - np.sum(np.multiply(xPhys[:, 0], xPhys[:, 1]))) / (model.nelx * model.nely)) - model.volfrac
+    one1 = np.ones(xPhys.shape)
+    return (np.dot(one1, xPhys) / (model.nelx * model.nely)) - model.volfrac
 
 
 # Derivative of non-linear volume fraction constraint
 def dnlcon(xPhys):
-    xPhys = xPhys.reshape(-1, 2, order='F')
     dc = np.ones(xPhys.shape)
     dv = np.ones(xPhys.shape)
-    dv[:, 0] = -xPhys[:, 1] / (model.nelx * model.nely)
-    dv[:, 1] = -xPhys[:, 0] / (model.nelx * model.nely)
 
     # Apply filter
-    dcf1, dvf1 = filterfun(xPhys[:, 0].reshape((model.nely, model.nelx), order='F'), dc[:, 0].reshape((model.nely, model.nelx), order='F'),
-                           dv[:, 0].reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
-    dcf2, dvf2 = filterfun(xPhys[:, 1].reshape((model.nely, model.nelx), order='F'), dc[:, 1].reshape((model.nely, model.nelx), order='F'),
-                           dv[:, 1].reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
-    dvf = dv
-    dvf[:, 0] = dvf1.flatten('F')
-    dvf[:, 1] = dvf2.flatten('F')
-
+    dcf, dvf = filterfun(xPhys.reshape((model.nely, model.nelx), order='F'), dc.reshape((model.nely, model.nelx), order='F'),
+              dv.reshape((model.nely, model.nelx), order='F'), model.H, model.Hs, model.ft)
     return dvf.flatten('F')
 
 
@@ -436,21 +303,20 @@ def dnlcon(xPhys):
 def save_step(x, it):
     # Define which iterations get saved
     if it.niter == 1 or it.niter == 10 or it.niter == 100 or it.niter % 500 == 0:
-        xopt1 = x[0:(model.nely * model.nelx)].reshape(model.nely, model.nelx, order='F')
-        xopt2 = x[(model.nely * model.nelx):].reshape(model.nely, model.nelx, order='F')
+        xopt = x.reshape(model.nely, model.nelx, order='F')
         topt = it.execution_time
         comp = it.fun
         niter = it.niter
         dc = it.grad
 
-        filename = 'HBTO_NN_result_dy' + str(model.der_type) + '/HBTO_NN_dy' + str(model.der_type) + '_it' + str(niter)
-        np.savez(filename, xopt1=xopt1, xopt2=xopt2, topt=topt, comp=comp, dc=dc, niter=niter)  # save file
+        filename = 'DBTO_SIMP_result/DBTO_SIMP_it' + str(niter)
+        np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc=dc, niter=niter)  # save file
 
 
 # Main function
-def HBTO(model):
-    bds = sp.optimize.Bounds(lb=0, ub=1, keep_feasible=True)  # define theta bounds
-    con = sp.optimize.NonlinearConstraint(nlcon, lb=0.0, ub=0.0, jac=dnlcon, keep_feasible=True)  # define NL constraint
+def DBTO(model):
+    bds = sp.optimize.Bounds(lb=0, ub=1, keep_feasible=True)
+    con = sp.optimize.NonlinearConstraint(nlcon, lb=0.0, ub=0.0, jac=dnlcon, keep_feasible=True)
     res = sp.optimize.minimize(feafun,
                                model.x,
                                args=(model),
@@ -461,24 +327,9 @@ def HBTO(model):
                                tol=model.tolx,
                                options={'maxiter': model.maxiter, 'disp': True, 'verbose': 3},
                                callback=save_step)
+
     return res
 
-
-# Create microstructure with rectangular hole
-def create_Micro(nel, theta1, theta2):
-    ye, xe = np.meshgrid(np.linspace(-1 + 1/nel, +1 - 1/nel, nel), np.linspace(-1 + 1/nel, +1 - 1/nel, nel))
-    ecoords_c_norm = np.concatenate((xe.reshape(-1, 1, order='F'), ye.reshape(-1, 1, order='F')), axis=1)
-    xMicro = np.zeros((nel*nel, 1))
-    for e in np.arange(0, nel*nel):
-        if ecoords_c_norm[e, 0] <= -1 + (1 - theta1):  # right
-            xMicro[e, 0] = 1
-        if ecoords_c_norm[e, 1] <= -1 + (1 - theta2):  # bottom
-            xMicro[e, 0] = 1
-        if ecoords_c_norm[e, 0] >= 1 - (1 - theta1):  # left
-            xMicro[e, 0] = 1
-        if ecoords_c_norm[e, 1] >= 1 - (1 - theta2):  # top
-            xMicro[e, 0] = 1
-    return xMicro.reshape(nel, nel, order='F')
 
 # Model class
 class model:
@@ -490,7 +341,6 @@ class model:
         self.fixeddofs = None  # Supports
         self.freedofs = None  # Free dofs
         self.KE = None  # Element stiffness matrix
-        self.nn_model = None  # NN model
         self.nelx = None  # Number of elements in x-direction
         self.nely = None  # Number of elements in y-direction
         self.H = None
@@ -506,25 +356,25 @@ class model:
         self.E0 = None  # Void stiffness
         self.Emin = None  # Fluid stiffness
         self.nu = None  # Poissons ratio
+        self.penal = None
 
 
-# %% RUN HBTO MBB EXAMPLE
+# %% RUN DBTO-SIMP MBB EXAMPLE
 # Define model and optimization settings
 model.nelx = 60  # number of elements in the x-direction
 model.nely = 30  # number of elements in the y-direction
 model.volfrac = 0.5  # volume fraction constraint
 model.rmin = 2.7  # filter radius
+model.penal = 3.0  # penalization parameter for SIMP
 model.ft = 1  # Filter option (1 = sensitivity filter or 2 = density filter)
-model.maxiter = 50  # Number of iterations
+model.maxiter = 1000  # Number of iterations
 model.tolx = 1e-3
 
 # Initialize model details
-x0 = (np.ones((model.nely * model.nelx, 2)) * np.sqrt(1-model.volfrac)).flatten('F')  # initial design
+x0 = (np.ones((model.nely * model.nelx, 1)) * model.volfrac).flatten()  # initial design
 model.x = x0  # initial design
 model.edofMat, model.iK, model.jK = feaprep(model)  # prepare fea
 model.H, model.Hs = filterprep(model)  # prepare filter
-model.nn_model = tf.keras.models.load_model("NN_model_HBTO_1e+04")  # load nn model
-model.der_type = 2  # type of derivative method to use (1 = Analytical Der., 2 = CFD, 3 = CSM, 4 = Automatic Diff.)
 
 # Force vector for the MBB problem
 dofs = 2 * (model.nelx + 1) * (model.nely + 1)
@@ -543,30 +393,18 @@ model.freedofs = np.setdiff1d(np.arange(0, dofs), model.fixeddofs)
 
 # Solve topology optimization problem
 dc0 = dfeafun(x0, model)  # compute initial sensitivity coefficients
-res = HBTO(model)  # solve TO problem
+res = DBTO(model)  # solve TO problem
 
 # Record and save output data
-xopt1 = res.x[0:(model.nely * model.nelx)].reshape(model.nely, model.nelx, order='F')
-xopt2 = res.x[(model.nely * model.nelx):].reshape(model.nely, model.nelx, order='F')
+xopt = res.x.reshape(model.nely, model.nelx, order='F')
 topt = res.execution_time
 comp = res.fun
 niter = res.niter
 dc = res.grad
 
-filename = 'HBTO_NN_result_dy' + str(model.der_type) + '/HBTO_NN_dy' + str(model.der_type) + '_it' + str(niter) + 'final'
-np.savez(filename, xopt1=xopt1, xopt2=xopt2, topt=topt, comp=comp, dc0=dc0, dc=dc, niter=niter)  # save final design
+filename = 'DBTO_SIMP_result/DBTO_SIMP_it' + str(niter) + 'final'
+np.savez(filename, xopt=xopt, topt=topt, comp=comp, dc0=dc0, dc=dc, niter=niter)  # save final design
 
 # Plot final topology
-nel = 100
-xfinal = np.zeros((model.nely*nel, model.nelx*nel))
-xopt1 = xopt1.reshape(-1, 1, order='F')
-xopt2 = xopt2.reshape(-1, 1, order='F')
-yv, xv = np.meshgrid(np.linspace(0, model.nelx*nel, model.nelx+1), np.linspace(0, model.nely*nel, model.nely+1))
-xv1 = xv[0:model.nely, 0:model.nelx].reshape(-1, 1, order='F')
-xv2 = xv[1:model.nely+1, 1:model.nelx+1].reshape(-1, 1, order='F')
-yv1 = yv[0:model.nely, 0:model.nelx].reshape(-1, 1, order='F')
-yv2 = yv[1:model.nely+1, 1:model.nelx+1].reshape(-1, 1, order='F')
-for e in np.arange(0, model.nelx*model.nely):
-    xfinal[int(xv1[e, 0]):int(xv2[e, 0]), int(yv1[e, 0]):int(yv2[e, 0])] = create_Micro(nel, xopt1[e, 0], xopt2[e, 0])
-plt.imshow(xfinal, extent=[0, model.nelx*nel, 0, model.nely*nel], cmap='Greys')
+plt.imshow(xopt, extent=[0, model.nelx, 0, model.nely], cmap='Greys')
 plt.show()

@@ -98,7 +98,7 @@ y_2 = nn_model.predict(x_test).reshape(Nt, ydim)
 # 0) Analytical Derivative of true function
 dy_0 = dyx(x_test)
 
-# 1) Analytical Derivative of NN
+# 1) Neural Network Jacobian
 t = time.time()
 Wn = []
 Bn = []
@@ -121,7 +121,7 @@ for s in np.arange(0, Nt):  # loop through test feature sets
         dYn.append(dact_fn(Yn[L - 1], Wn[L], Bn[L], An[L]))  # derivative of hidden layer L output
         dy_product = np.matmul(dy_product, dYn[L])  # derivative of hidden layer L output with respect NN input
     y_1[s, :] = Yn[-1]  # manual NN prediction
-    dy_1[s, :, :] = dy_product.T.reshape(1, ydim, xdim)  # derivative via Analytical Derivative of NN
+    dy_1[s, :, :] = dy_product.T.reshape(1, ydim, xdim)  # derivative via NNJ
 t_1 = time.time() - t  # prediction time
 
 # %% ERROR CALCULATIONS
